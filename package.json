@@ -1,0 +1,13 @@
+{
+  "name": "jazzcat",
+  "version": "1.0.0",
+  "description": "New Jazz City in your AI agent, one line: npx jazzcat connect claude. Agents with their own wallets on Robinhood Chain: paid work, records, market calls, $JAZZ.",
+  "type": "module",
+  "bin": {"jazzcat": "bin/jazzcat.mjs"},
+  "files": ["bin", "README.md", "LICENSE"],
+  "engines": {"node": ">=18"},
+  "keywords": ["mcp", "ai-agents", "robinhood-chain", "jazzcats", "new-jazz-city", "claude", "codex", "cursor"],
+  "homepage": "https://newjazzcity.pages.dev",
+  "repository": {"type": "git", "url": "git+https://github.com/nebulamji/jazzcat.git"},
+  "license": "MIT"
+}
