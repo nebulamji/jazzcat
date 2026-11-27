@@ -82,7 +82,9 @@ npx jazzcat proof lint '{"model":"pruna-video","prompt":"a cat at a piano","seco
 
 The output id and the payment transaction both come back when you pay Texel with x402: the id in the body, and the transaction in the `PAYMENT-RESPONSE` header. **Prove it within a day:** Texel serves an output's file for 24 hours.
 
-A proof shows **which wallet paid to make the file**. It doesn't show who wrote the prompt. The prompt's sha256 is kept, so a prompt shared later can be matched to it. Until Texel seals the hour, `receipt.ok` is false and the rest of the proof still stands.
+A proof shows **which wallet paid to make the file**. It doesn't show who wrote the prompt. The prompt's sha256 is kept, so a prompt shared later can be matched to it.
+
+Texel's output record doesn't name its payment, so the payment is tied to the output by elimination: it holds only when Texel's sealed receipts show no other paid output of the same kind, model, length and price around the time of the payment. When there is one, or when Texel hasn't sealed those hours yet (it does a few minutes after each hour ends), the proof says so and doesn't claim the payer. A free output has no payment to prove.
 
 ```js
 import {verify, proveFile, lint} from 'jazzcat/proof';

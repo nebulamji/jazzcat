@@ -35,6 +35,22 @@ test('an SSE answer is read; a tool error and an RPC error become NjcError', asy
   await assert.rejects(rpc.tools(), e => e instanceof NjcError && e.code === -32601);
 });
 
+test('an SSE answer with a notification first still gives the response to this request (Codex, jazzcat #1)', async () => {
+  const sse = (lines, crlf = false) => new NewJazzCity({fetch: async (u, i) => { const id = JSON.parse(i.body).id;
+    return new Response(lines(id).join(crlf ? '\r\n' : '\n'), {headers: {'content-type': 'text/event-stream'}}); }});
+  const note = {jsonrpc: '2.0', method: 'notifications/message', params: {level: 'info', data: 'working'}};
+  const lines = id => ['event: message', `data: ${JSON.stringify(note)}`, '', 'event: message', `data: ${JSON.stringify({jsonrpc: '2.0', id, result: {tools: [{name: 'cat_self'}]}})}`, '', ''];
+  assert.deepEqual(await sse(lines).tools(), [{name: 'cat_self'}]);
+  assert.deepEqual(await sse(lines, true).tools(), [{name: 'cat_self'}]);
+  await assert.rejects(sse(() => ['event: message', `data: ${JSON.stringify(note)}`, '', '']).tools(), e => e instanceof NjcError && e.code === 'no-response');
+});
+
+test('calls running at once each get their own answer', async () => {
+  const city = new NewJazzCity({fetch: async (u, i) => { const b = JSON.parse(i.body); await new Promise(r => setTimeout(r, b.params.arguments.cat === 1 ? 30 : 1));
+    return new Response(`event: message\ndata: ${JSON.stringify({jsonrpc: '2.0', id: b.id, result: {structuredContent: {cat: b.params.arguments.cat}}})}\n\n`); }});
+  assert.deepEqual(await Promise.all([city.cat(1), city.cat(2)]), [{cat: 1}, {cat: 2}]);
+});
+
 test('a slow server times out as NjcError; plans are only ever asked for, never sent', async () => {
   const slow = new NewJazzCity({timeoutMs: 20, fetch: (u, i) => new Promise((_, rej) => i.signal.addEventListener('abort', () => rej(Object.assign(new Error('aborted'), {name: 'AbortError'}))))});
   await assert.rejects(slow.tools(), e => e instanceof NjcError && e.code === 'timeout');

@@ -18,15 +18,18 @@ const FILE = new TextEncoder().encode('a five second video of a cat at a piano')
 const madeMs = Math.floor(Date.now() / 3600e3) * 3600e3 - 2 * 3600e3 + 10 * 60e3; // ten minutes into an hour that is sealed
 const hourSec = Math.floor(madeMs / 3600e3) * 3600, hourName = new Date(madeMs).toISOString().slice(0, 13);
 const OUT = {id: 'vid_test-1', kind: 'video', model: 'pruna-video', status: 'ready', createdAt: new Date(madeMs).toISOString(), price: {micros: 150000}, seconds: 5, aspectRatio: '16:9', prompt: 'a cat at a piano'};
-const receipts = [
+let receipts;
+const baseReceipts = () => [
   {hour: hourSec, kind: 'video', item: 'pruna-video', width: 0, height: 0, seconds: 5, characters: 0, creditsMicros: 150000, free: false, code: pad('77')},
   {hour: hourSec, kind: 'image', item: 'flux', width: 1024, height: 1024, seconds: 0, characters: 0, creditsMicros: 20000, free: false, code: pad('78')}];
-const values = receipts.map(r => [1, r.hour, r.kind, r.item, r.width, r.height, r.seconds, r.characters, r.creditsMicros, r.free, r.code]);
+const valuesOf = rs => rs.map(r => [1, r.hour, r.kind, r.item, r.width, r.height, r.seconds, r.characters, r.creditsMicros, r.free, r.code]);
 
-function chain({root = StandardMerkleTree.of(values, RECEIPT).root, paidMs = madeMs + 20e3, micros = 105000} = {}) {
+function chain({extra = [], tamper = false, paidMs = madeMs + 20e3, micros = 105000, output = OUT} = {}) {
+  receipts = [...baseReceipts(), ...extra];
+  const values = valuesOf(receipts), root = tamper ? pad('dead') : StandardMerkleTree.of(values, RECEIPT).root;
   return async (url, init = {}) => {
     url = String(url);
-    if (url === `${TEXEL.api}/outputs/${OUT.id}`) return Response.json(OUT);
+    if (url === `${TEXEL.api}/outputs/${OUT.id}`) return Response.json(output);
     if (url === `${TEXEL.api}/outputs/${OUT.id}/file`) return new Response(FILE, {headers: {'content-type': 'video/mp4'}});
     if (url === `${TEXEL.hours}/${hourName}.json`) return Response.json({receipts, seal: {txHash: '0x' + '9'.repeat(64)}});
     if (url.startsWith(`${TEXEL.hours}/`)) return new Response('no', {status: 404});
@@ -52,16 +55,30 @@ test('verify: the file, the wallet that paid and Texel\'s sealed receipt, with t
   assert.equal(p.paid.wallet, WALLET); assert.equal(p.paid.usdgMicros, '105000');
   assert.equal(p.receipt.ok, true); assert.equal(p.receipt.rootMatchesChain, true); assert.equal(p.receipt.fits, 1);
   assert.match(p.says, new RegExp(`Wallet ${WALLET} paid 0.105 USDG`));
-  const {id, says, checkedAt, ok, ...proof} = p;
+  assert.equal(p.tie.tied, true); assert.match(p.tie.how, /only paid output/);
+  const {id, says, checkedAt, ok, tie, ...proof} = p;
   assert.equal(id, createHash('sha256').update(canonical(proof)).digest('hex'), 'the id is the sha256 of the canonical proof');
 });
 
 test('verify: a root that does not match the chain, a wrong price, a late payment, a bad tx', async () => {
-  assert.equal((await withFetch(chain({root: pad('dead')}), () => verify(OUT.id, TX))).receipt.rootMatchesChain, false);
+  const tampered = await withFetch(chain({tamper: true}), () => verify(OUT.id, TX));
+  assert.equal(tampered.receipt.rootMatchesChain, false); assert.equal(tampered.ok, false); assert.match(tampered.why, /does not match the root/);
   assert.match((await withFetch(chain({micros: 1}), () => verify(OUT.id, TX))).why, /not this output's price/);
   assert.match((await withFetch(chain({paidMs: madeMs + 10 * 60e3}), () => verify(OUT.id, TX))).why, /more than 3 minutes/);
   assert.match((await withFetch(chain(), () => verify(OUT.id, '0x' + '00'.repeat(32)))).why, /not a successful/);
   assert.match((await verify('../etc/passwd', TX)).why, /output is the Texel output id/);
+});
+
+test('a payment that fits two outputs is tied to neither (Codex, jazzcat #1); a free output and an unsealed hour prove nothing yet', async () => {
+  const twin = {hour: hourSec, kind: 'video', item: 'pruna-video', width: 0, height: 0, seconds: 5, characters: 0, creditsMicros: 150000, free: false, code: pad('79')};
+  const both = await withFetch(chain({extra: [twin]}), () => verify(OUT.id, TX));
+  assert.equal(both.ok, false); assert.equal(both.step, 'tie'); assert.match(both.why, /2 paid outputs/); assert.equal(both.says, undefined);
+  assert.equal(both.paid.wallet, WALLET, 'what the chain shows is still reported, just not claimed');
+  const free = await withFetch(chain({output: {...OUT, free: true}}), () => verify(OUT.id, TX));
+  assert.equal(free.ok, false); assert.match(free.why, /free/);
+  const soon = Date.now() - 60e3, fresh = {...OUT, createdAt: new Date(soon).toISOString()};
+  const pending = await withFetch(chain({output: fresh, paidMs: soon + 10e3}), () => verify(OUT.id, TX));
+  assert.equal(pending.ok, false); assert.equal(pending.pending, true); assert.match(pending.why, /not sealed/);
 });
 
 test('proof <file> <output> <tx>: holds only when your file is the one Texel serves', async () => {
