@@ -161,7 +161,7 @@ function spawnIn(args, env, input) {
     c.on('close', status => resolve({status, stdout, stderr})); c.stdin.end(input);
   });
 }
-const GOOD = 'jc_' + 'A1b2C3d4'.repeat(4), GOOD2 = 'jc_' + 'Z9y8X7w6'.repeat(4), BAD = 'jc_' + 'nope'.repeat(5);
+const GOOD = 'jc_' + 'a1b2c3d4'.repeat(8), GOOD2 = 'jc_' + '9f8e7d6c'.repeat(8), BAD = 'jc_' + '0'.repeat(64);
 async function holderServer() {
   const seen = [];
   const server = createServer((req, res) => { let b = ''; req.on('data', d => { b += d; }); req.on('end', () => {
@@ -207,6 +207,7 @@ test('holder sign-in: a token the server refuses writes nothing; the y/N questio
     assert.equal(bad.status, 1); assert.match(bad.stderr, /didn't open a session/); assert.ok(!bad.stderr.includes(BAD));
     assert.equal(JSON.parse(readFileSync(join(home, '.cursor', 'mcp.json'), 'utf8')).mcpServers.jazzcats, undefined, 'nothing written');
     const junk = await spawnIn(['--no-skill', '--holder-token-stdin'], env, 'hello\n'); assert.equal(junk.status, 1); assert.match(junk.stderr, /not a jc_ token/);
+    const upper = await spawnIn(['--no-skill', '--holder-token-stdin'], env, GOOD.toUpperCase().replace('JC_', 'jc_') + '\n'); assert.equal(upper.status, 1, 'only the server\'s own format (lowercase hex, 64)');
     const no = await spawnIn(['--no-skill', '--holder'], env, 'n\n'); assert.equal(no.status, 0); assert.match(no.stderr, /Do you hold a JazzCat\? \(y\/N\)/); assert.doesNotMatch(no.stderr, /signed in/);
     const yes = await spawnIn(['--no-skill', '--holder'], env, `y\n${GOOD}\n`);
     assert.equal(yes.status, 0, yes.stderr); assert.match(yes.stderr, /open https:\/\/newjazzcity\.pages\.dev\/pair\//); assert.match(yes.stderr, /Your Cat is signed in/); assert.ok(!yes.stderr.includes(GOOD));

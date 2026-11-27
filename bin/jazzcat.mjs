@@ -22,7 +22,7 @@ const URL_SKILL = process.env.JAZZCAT_SKILL_URL || 'https://newjazzcity.pages.de
 const URL_HOLDER = process.env.JAZZCAT_HOLDER_MCP_URL || 'https://newjazzcity.pages.dev/mcp';
 const URL_PAIR = 'https://newjazzcity.pages.dev/pair/';
 const HOLDER_NAME = 'jazzcats';
-const TOKEN_RE = /^jc_[A-Za-z0-9_-]{10,200}$/;
+const TOKEN_RE = /^jc_[0-9a-f]{64}$/; // exactly what the agent server issues (jc_ + 32 random bytes in hex) and accepts
 // Where each agent reads skills from: <dir>/jazzcats/SKILL.md.
 const SKILL_DIRS = {
   claude: () => path.join(os.homedir(), '.claude', 'skills'),
