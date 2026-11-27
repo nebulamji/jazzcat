@@ -1,0 +1,30 @@
+{
+  "schema": "oak-recipe/v1",
+  "project": "new-jazz-city",
+  "name": "fee-flow-epoch",
+  "description": "Buyback & burn (JazzFeeFlow): the current epoch (pass epochId to fee-flow-buy), its start price and start time.",
+  "chainId": 4663,
+  "contract": "0x338363c90595b8a35539c5F232108Cb4090f0d8e",
+  "function": {
+    "type": "function",
+    "name": "getSlot0",
+    "stateMutability": "view",
+    "inputs": [],
+    "outputs": [
+      {
+        "type": "uint16",
+        "name": "epochId"
+      },
+      {
+        "type": "uint256",
+        "name": "initPrice"
+      },
+      {
+        "type": "uint256",
+        "name": "startTime"
+      }
+    ]
+  },
+  "inputs": [],
+  "kind": "read"
+}

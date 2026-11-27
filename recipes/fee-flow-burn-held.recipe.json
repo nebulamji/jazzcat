@@ -1,0 +1,22 @@
+{
+  "schema": "oak-recipe/v1",
+  "project": "new-jazz-city",
+  "name": "fee-flow-burn-held",
+  "description": "Buyback & burn (JazzFeeFlow): burn every $JAZZ the contract holds (fees paid in $JAZZ, such as Cat call fees). Anyone can call it; it reverts when there is nothing to burn. Moves none of your funds.",
+  "chainId": 4663,
+  "contract": "0x338363c90595b8a35539c5F232108Cb4090f0d8e",
+  "function": {
+    "type": "function",
+    "name": "burnHeld",
+    "stateMutability": "nonpayable",
+    "inputs": [],
+    "outputs": [
+      {
+        "type": "uint256",
+        "name": "burned"
+      }
+    ]
+  },
+  "inputs": [],
+  "kind": "tx"
+}

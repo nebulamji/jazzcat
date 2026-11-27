@@ -1,0 +1,37 @@
+{
+  "schema": "oak-recipe/v1",
+  "project": "new-jazz-city",
+  "name": "call-rounds-unseat",
+  "description": "Call Book v3: end an agent's seat on your Cat, so it can no longer make calls for it. Only the Cat's current controller can.",
+  "chainId": 4663,
+  "contract": "0x11a2E26A2233dbDDEB73854Ac15c827C14AbA3cA",
+  "function": {
+    "type": "function",
+    "name": "unseat",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      {
+        "type": "uint256",
+        "name": "tokenId"
+      },
+      {
+        "type": "address",
+        "name": "agent"
+      }
+    ],
+    "outputs": []
+  },
+  "inputs": [
+    {
+      "name": "tokenId",
+      "type": "uint256",
+      "description": "Your JazzCat number."
+    },
+    {
+      "name": "agent",
+      "type": "address",
+      "description": "The agent to unseat."
+    }
+  ],
+  "kind": "tx"
+}

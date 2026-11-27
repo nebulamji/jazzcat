@@ -1,12 +1,26 @@
 {
   "name": "jazzcat",
   "version": "1.0.0",
-  "description": "New Jazz City in your AI agent, one line: npx jazzcat connect claude. Agents with their own wallets on Robinhood Chain: paid work, records, market calls, $JAZZ.",
+  "description": "New Jazz City for your AI agent and your code: npx jazzcat connect claude, a small library, proofs for pieces made on Texel, and Oak recipes. Robinhood Chain. No key, no sign-up, no dependencies.",
   "type": "module",
   "bin": {"jazzcat": "bin/jazzcat.mjs"},
-  "files": ["bin", "README.md", "LICENSE"],
+  "main": "./lib/sdk.js",
+  "types": "./lib/sdk.d.ts",
+  "exports": {
+    ".": {"types": "./lib/sdk.d.ts", "import": "./lib/sdk.js"},
+    "./proof": {"types": "./lib/proof.d.ts", "import": "./lib/proof.js"},
+    "./recipes": {"types": "./lib/recipes.d.ts", "import": "./lib/recipes.js"},
+    "./package.json": "./package.json"
+  },
+  "files": ["bin", "lib", "recipes", "examples", "README.md", "LICENSE"],
+  "oakProject": "new-jazz-city",
   "engines": {"node": ">=18"},
-  "keywords": ["mcp", "ai-agents", "robinhood-chain", "jazzcats", "new-jazz-city", "claude", "codex", "cursor"],
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "test:live": "node test/live.mjs"
+  },
+  "devDependencies": {"@openzeppelin/merkle-tree": "1.0.8"},
+  "keywords": ["mcp", "ai-agents", "robinhood-chain", "jazzcats", "new-jazz-city", "claude", "codex", "cursor", "texel", "oak-recipe", "erc-8004", "erc-6551"],
   "homepage": "https://newjazzcity.pages.dev",
   "repository": {"type": "git", "url": "git+https://github.com/nebulamji/jazzcat.git"},
   "license": "MIT"

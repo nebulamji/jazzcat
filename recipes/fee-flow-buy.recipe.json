@@ -1,0 +1,73 @@
+{
+  "schema": "oak-recipe/v1",
+  "project": "new-jazz-city",
+  "name": "fee-flow-buy",
+  "description": "Buyback & burn (JazzFeeFlow): take the whole fee basket (the named tokens) for the current price in $JAZZ, which is burned from your wallet. Approves exactly maxPayment $JAZZ to JazzFeeFlow first. No owner, no withdraw path.",
+  "chainId": 4663,
+  "contract": "0x338363c90595b8a35539c5F232108Cb4090f0d8e",
+  "function": {
+    "type": "function",
+    "name": "buy",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      {
+        "type": "address[]",
+        "name": "assets"
+      },
+      {
+        "type": "address",
+        "name": "assetsReceiver"
+      },
+      {
+        "type": "uint16",
+        "name": "epochId"
+      },
+      {
+        "type": "uint256",
+        "name": "deadline"
+      },
+      {
+        "type": "uint256",
+        "name": "maxPayment"
+      }
+    ],
+    "outputs": [
+      {
+        "type": "uint256",
+        "name": "paid"
+      }
+    ]
+  },
+  "inputs": [
+    {
+      "name": "assets",
+      "type": "address[]",
+      "description": "Tokens to take, their whole balances in JazzFeeFlow (0x0000000000000000000000000000000000000000 = ETH). $JAZZ is never for sale."
+    },
+    {
+      "name": "assetsReceiver",
+      "type": "address",
+      "description": "Where the basket goes (usually your own wallet)."
+    },
+    {
+      "name": "epochId",
+      "type": "uint16",
+      "description": "The epoch you priced, from fee-flow-epoch: a bid never lands in a later epoch."
+    },
+    {
+      "name": "deadline",
+      "type": "uint256",
+      "description": "Last unix second the bid is valid."
+    },
+    {
+      "name": "maxPayment",
+      "type": "uint256",
+      "description": "The most $JAZZ you will burn, in base units (18 decimals). Exactly this much is approved."
+    }
+  ],
+  "kind": "tx",
+  "approve": {
+    "token": "0x1f243c6638a6BEcd787f326b240227687A3835Bc",
+    "amountFromInput": "maxPayment"
+  }
+}

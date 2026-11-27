@@ -1,0 +1,32 @@
+{
+  "schema": "oak-recipe/v1",
+  "project": "new-jazz-city",
+  "name": "cat-wallet-of",
+  "description": "CatPayees: a JazzCat's own ERC-6551 wallet on Robinhood Chain (it goes with the Cat when it sells).",
+  "chainId": 4663,
+  "contract": "0x5a493B2555fCeEa537d4674b27C050bBcFbD172F",
+  "function": {
+    "type": "function",
+    "name": "walletOf",
+    "stateMutability": "view",
+    "inputs": [
+      {
+        "type": "uint256",
+        "name": "cat"
+      }
+    ],
+    "outputs": [
+      {
+        "type": "address"
+      }
+    ]
+  },
+  "inputs": [
+    {
+      "name": "cat",
+      "type": "uint256",
+      "description": "JazzCat number, 1 to 5678."
+    }
+  ],
+  "kind": "read"
+}

@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-// jazzcat: put New Jazz City in your AI agent with one line.
+// jazzcat: New Jazz City for your AI agent and your code.
 //   npx jazzcat connect claude | codex | cursor | vscode | desktop
 //   npx jazzcat mcp        stdio bridge to the New Jazz City MCP (what the configs run)
+//   npx jazzcat proof …    prove a piece made on Texel (lib/proof.js)
+//   npx jazzcat recipes …  New Jazz City's Oak recipes (lib/recipes.js)
 // No key, no sign-up. Anything that moves money comes back as a plan your own wallet signs.
 import {execFileSync} from 'node:child_process';
 import fs from 'node:fs';
@@ -22,8 +24,9 @@ const PROMPTS = [
 ];
 
 function help() {
-  say(`jazzcat: New Jazz City in your AI agent, one line.
+  say(`jazzcat: New Jazz City for your AI agent and your code.
 
+Connect an AI agent:
   npx jazzcat connect claude     Claude Code
   npx jazzcat connect codex      Codex CLI
   npx jazzcat connect cursor     Cursor (this project)
@@ -31,6 +34,19 @@ function help() {
   npx jazzcat connect desktop    Claude Desktop
   npx jazzcat mcp                the bridge the configs run (stdio)
   npx jazzcat url                print the MCP address
+
+Prove a piece you made on Texel:
+  npx jazzcat proof <file>                             find it in the public register
+  npx jazzcat proof <file> <output-id> <payment-tx>    prove it: your file, the wallet that paid, Texel's receipt
+  npx jazzcat proof <output-id> <payment-tx>           the same proof, without a file
+  npx jazzcat proof lint '<request JSON>'              check a Texel request before you pay
+
+Oak recipes for New Jazz City:
+  npx jazzcat recipes                 list them
+  npx jazzcat recipes <name>          print one
+  npx jazzcat recipes --out <dir>     write them all, then: oak recipes add <dir>
+
+In code: import {NewJazzCity} from 'jazzcat'
 
 No key, no sign-up. Anything that moves money comes back as a plan your own wallet signs.
 MCP: ${URL_MCP}`);
@@ -125,8 +141,52 @@ async function bridge() {
   rl.on('close', async () => { while (busy || queue.length) await new Promise(r => setTimeout(r, 50)); process.exit(0); });
 }
 
-const [cmd, arg] = process.argv.slice(2);
+// jazzcat proof: prints the proof as JSON; exits 0 when it holds, 1 when it doesn't, 2 on a usage mistake.
+async function proof(args) {
+  const P = await import('../lib/proof.js');
+  const register = process.env.JAZZCAT_REGISTER_URL || P.REGISTER;
+  const print = o => { console.log(JSON.stringify(o, null, 2)); process.exit(o.ok ? 0 : 1); };
+  const usage = () => { say(`usage:
+  jazzcat proof <file>
+  jazzcat proof <file> <output-id> <payment-tx>
+  jazzcat proof <output-id> <payment-tx>
+  jazzcat proof lint '<request JSON>'`); process.exit(2); };
+  const [a, b, c] = args;
+  if (!a) return usage();
+  if (a === 'lint') return b ? print(await P.lint(b)) : usage();
+  if (fs.existsSync(a)) {
+    if (b && !c) return usage();
+    return print(await P.proveFile(a, {output: b, tx: c, register}));
+  }
+  if (b && /^0x[0-9a-fA-F]{64}$/.test(b) && !c) return print(await P.verify(a, b));
+  say(`No file at ${a}.`); usage();
+}
+
+async function recipesCmd(args) {
+  const R = await import('../lib/recipes.js');
+  if (args[0] === '--out') {
+    if (!args[1]) { say('usage: jazzcat recipes --out <dir>'); process.exit(2); }
+    const written = R.writeRecipes(args[1]);
+    say(`Wrote ${written.length} recipes to ${args[1]}. Add them to Oak with:\n  oak recipes add ${args[1]}`);
+    return;
+  }
+  if (args[0]) {
+    const r = R.recipe(args[0]);
+    if (!r) { say(`No recipe named ${args[0]}. jazzcat recipes lists them.`); process.exit(1); }
+    console.log(JSON.stringify(r, null, 2));
+    return;
+  }
+  const all = R.recipes(), w = Math.max(...all.map(r => r.name.length));
+  for (const r of all) console.log(`${r.name.padEnd(w)}  ${r.kind === 'read' ? 'read' : 'tx  '}  ${r.description}`);
+  say(`\n${all.length} recipes for Robinhood Chain. Print one: jazzcat recipes <name>. For Oak: jazzcat recipes --out <dir>, then oak recipes add <dir>.`);
+}
+
+const [cmd, ...rest] = process.argv.slice(2);
+const arg = rest[0];
 if (cmd === 'connect') connect(arg);
 else if (cmd === 'mcp') bridge();
 else if (cmd === 'url') console.log(URL_MCP);
+else if (cmd === 'proof') await proof(rest);
+else if (cmd === 'recipes') await recipesCmd(rest);
+else if (cmd === 'help' || cmd === '--help' || cmd === '-h') help();
 else { help(); process.exit(cmd ? 1 : 0); }

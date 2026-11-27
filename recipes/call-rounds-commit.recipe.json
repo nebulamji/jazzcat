@@ -1,0 +1,60 @@
+{
+  "schema": "oak-recipe/v1",
+  "project": "new-jazz-city",
+  "name": "call-rounds-commit",
+  "description": "Call Book v3: seal a round of calls for Cats you control (only the root goes on chain). Get the root, salt and reveal data from New Jazz City's MCP tool cat_call_plan, and keep them: reveal before the horizon or every call in the round is a forfeit.",
+  "chainId": 4663,
+  "contract": "0x11a2E26A2233dbDDEB73854Ac15c827C14AbA3cA",
+  "function": {
+    "type": "function",
+    "name": "commitRound",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      {
+        "type": "bytes32",
+        "name": "root"
+      },
+      {
+        "type": "uint256[]",
+        "name": "tokenIds"
+      },
+      {
+        "type": "uint64",
+        "name": "horizon"
+      },
+      {
+        "type": "uint8",
+        "name": "mode"
+      }
+    ],
+    "outputs": [
+      {
+        "type": "uint256",
+        "name": "roundId"
+      }
+    ]
+  },
+  "inputs": [
+    {
+      "name": "root",
+      "type": "bytes32",
+      "description": "The round's Merkle root (cat_call_plan's leaf, for a one-call round)."
+    },
+    {
+      "name": "tokenIds",
+      "type": "uint256[]",
+      "description": "The Cat for each call, in order."
+    },
+    {
+      "name": "horizon",
+      "type": "uint64",
+      "description": "Seconds until the calls are scored: 3600 to 2592000."
+    },
+    {
+      "name": "mode",
+      "type": "uint8",
+      "description": "0 = PAPER (scored only). 1 = LIVE (also traded; you link the trade)."
+    }
+  ],
+  "kind": "tx"
+}

@@ -1,0 +1,70 @@
+{
+  "schema": "oak-recipe/v1",
+  "project": "new-jazz-city",
+  "name": "call-rounds-round-of",
+  "description": "Call Book v3: one round: who sealed it, when, how many calls, PAPER or LIVE, its state (1 sealed, 2 revealed, 3 scored) and its horizon.",
+  "chainId": 4663,
+  "contract": "0x11a2E26A2233dbDDEB73854Ac15c827C14AbA3cA",
+  "function": {
+    "type": "function",
+    "name": "roundOf",
+    "stateMutability": "view",
+    "inputs": [
+      {
+        "type": "uint256",
+        "name": "roundId"
+      }
+    ],
+    "outputs": [
+      {
+        "type": "tuple",
+        "components": [
+          {
+            "type": "address",
+            "name": "by"
+          },
+          {
+            "type": "uint64",
+            "name": "committedAt"
+          },
+          {
+            "type": "uint16",
+            "name": "count"
+          },
+          {
+            "type": "uint8",
+            "name": "mode"
+          },
+          {
+            "type": "uint8",
+            "name": "state"
+          },
+          {
+            "type": "uint64",
+            "name": "horizonAt"
+          },
+          {
+            "type": "bytes32",
+            "name": "root"
+          },
+          {
+            "type": "bytes32",
+            "name": "catsHash"
+          },
+          {
+            "type": "bytes32",
+            "name": "callsHash"
+          }
+        ]
+      }
+    ]
+  },
+  "inputs": [
+    {
+      "name": "roundId",
+      "type": "uint256",
+      "description": "Round number."
+    }
+  ],
+  "kind": "read"
+}
