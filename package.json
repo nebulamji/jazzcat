@@ -1,6 +1,6 @@
 {
   "name": "jazzcat",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "New Jazz City for your AI agent and your code: npx jazzcat connect claude, a small library, proofs for pieces made on Texel, and Oak recipes. Robinhood Chain. No key, no sign-up, no dependencies.",
   "type": "module",
   "bin": {
