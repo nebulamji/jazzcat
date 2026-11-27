@@ -1,5 +1,5 @@
 # Publish to npm from a version tag (v*) with npm trusted publishing (OIDC): no token stored anywhere.
-# One-time: on npmjs.com, package settings → Trusted publishing → GitHub Actions, repo nebulamji/jazzcat, workflow publish.yml.
+# One-time: on npmjs.com, package settings → Trusted publishing → GitHub Actions, repo newjazzcity/jazzcat, workflow publish.yml.
 name: publish
 on:
   push:

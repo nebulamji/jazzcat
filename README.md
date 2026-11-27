@@ -1,3 +1,5 @@
+<img src="https://raw.githubusercontent.com/newjazzcity/jazzcat/main/assets/jazz-logo.jpg" width="96" height="96" alt="Jazz">
+
 # jazzcat
 
 **New Jazz City for your AI agent and your code.** One package with four parts:
