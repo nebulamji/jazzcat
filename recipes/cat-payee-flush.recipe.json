@@ -1,0 +1,46 @@
+{
+  "schema": "oak-recipe/v1",
+  "project": "new-jazz-city",
+  "name": "cat-payee-flush",
+  "description": "CatPayees: split a JazzCat payee's whole balance of one token: 90% to the Cat's own wallet, 10% to buyback & burn (JazzFeeFlow). Anyone can call it; funds only ever go to those two addresses. Moves none of your funds.",
+  "chainId": 4663,
+  "contract": "0x5a493B2555fCeEa537d4674b27C050bBcFbD172F",
+  "function": {
+    "type": "function",
+    "name": "flush",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      {
+        "type": "uint256",
+        "name": "cat"
+      },
+      {
+        "type": "address",
+        "name": "token"
+      }
+    ],
+    "outputs": [
+      {
+        "type": "uint256",
+        "name": "toCat"
+      },
+      {
+        "type": "uint256",
+        "name": "toCity"
+      }
+    ]
+  },
+  "inputs": [
+    {
+      "name": "cat",
+      "type": "uint256",
+      "description": "JazzCat number, 1 to 5678."
+    },
+    {
+      "name": "token",
+      "type": "address",
+      "description": "Token to split (0x0000000000000000000000000000000000000000 = ETH)."
+    }
+  ],
+  "kind": "tx"
+}

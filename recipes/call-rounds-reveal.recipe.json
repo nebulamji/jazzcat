@@ -1,0 +1,77 @@
+{
+  "schema": "oak-recipe/v1",
+  "project": "new-jazz-city",
+  "name": "call-rounds-reveal",
+  "description": "Call Book v3: reveal a whole round before its horizon. The contract rebuilds the root and refuses anything that does not match. Anyone holding the round data can send it.",
+  "chainId": 4663,
+  "contract": "0x11a2E26A2233dbDDEB73854Ac15c827C14AbA3cA",
+  "function": {
+    "type": "function",
+    "name": "revealRound",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      {
+        "type": "uint256",
+        "name": "roundId"
+      },
+      {
+        "type": "uint256[]",
+        "name": "tokenIds"
+      },
+      {
+        "type": "bytes32[]",
+        "name": "controls"
+      },
+      {
+        "type": "tuple[]",
+        "name": "calls",
+        "components": [
+          {
+            "type": "bytes32",
+            "name": "asset"
+          },
+          {
+            "type": "bool",
+            "name": "up"
+          },
+          {
+            "type": "uint8",
+            "name": "size"
+          },
+          {
+            "type": "bytes32",
+            "name": "salt"
+          },
+          {
+            "type": "bytes32",
+            "name": "inputs"
+          }
+        ]
+      }
+    ],
+    "outputs": []
+  },
+  "inputs": [
+    {
+      "name": "roundId",
+      "type": "uint256",
+      "description": "From the RoundCommitted event of the seal."
+    },
+    {
+      "name": "tokenIds",
+      "type": "uint256[]",
+      "description": "The same Cats, in the same order, as the seal."
+    },
+    {
+      "name": "controls",
+      "type": "bytes32[]",
+      "description": "Each Cat's control fingerprint at the seal (cat_call_plan checks.control)."
+    },
+    {
+      "name": "calls",
+      "type": "tuple[]",
+      "description": "Each call: asset (bytes32 market code, e.g. ETH), up, size (1-5), salt, inputs (hash of the inputs manifest)."
+    }
+  ],
+  "kind": "tx"
+}

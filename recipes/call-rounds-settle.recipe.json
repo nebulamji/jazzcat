@@ -1,0 +1,77 @@
+{
+  "schema": "oak-recipe/v1",
+  "project": "new-jazz-city",
+  "name": "call-rounds-settle",
+  "description": "Call Book v3: score a round after its horizon from the judge's posted prices (an unrevealed round scores every call as a forfeit; pass an empty calls list). Anyone can call it. Moves no funds.",
+  "chainId": 4663,
+  "contract": "0x11a2E26A2233dbDDEB73854Ac15c827C14AbA3cA",
+  "function": {
+    "type": "function",
+    "name": "settleRound",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      {
+        "type": "uint256",
+        "name": "roundId"
+      },
+      {
+        "type": "uint256[]",
+        "name": "tokenIds"
+      },
+      {
+        "type": "bytes32[]",
+        "name": "controls"
+      },
+      {
+        "type": "tuple[]",
+        "name": "calls",
+        "components": [
+          {
+            "type": "bytes32",
+            "name": "asset"
+          },
+          {
+            "type": "bool",
+            "name": "up"
+          },
+          {
+            "type": "uint8",
+            "name": "size"
+          },
+          {
+            "type": "bytes32",
+            "name": "salt"
+          },
+          {
+            "type": "bytes32",
+            "name": "inputs"
+          }
+        ]
+      }
+    ],
+    "outputs": []
+  },
+  "inputs": [
+    {
+      "name": "roundId",
+      "type": "uint256",
+      "description": "The round to score."
+    },
+    {
+      "name": "tokenIds",
+      "type": "uint256[]",
+      "description": "The Cats, as sealed."
+    },
+    {
+      "name": "controls",
+      "type": "bytes32[]",
+      "description": "The control fingerprints, as sealed."
+    },
+    {
+      "name": "calls",
+      "type": "tuple[]",
+      "description": "The revealed calls, exactly as revealed (empty for an unrevealed round)."
+    }
+  ],
+  "kind": "tx"
+}

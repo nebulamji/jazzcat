@@ -1,0 +1,21 @@
+{
+  "schema": "oak-recipe/v1",
+  "project": "new-jazz-city",
+  "name": "fee-flow-price",
+  "description": "Buyback & burn (JazzFeeFlow): the $JAZZ price of the whole fee basket right now (18 decimals). The price falls through each epoch to a floor.",
+  "chainId": 4663,
+  "contract": "0x338363c90595b8a35539c5F232108Cb4090f0d8e",
+  "function": {
+    "type": "function",
+    "name": "getPrice",
+    "stateMutability": "view",
+    "inputs": [],
+    "outputs": [
+      {
+        "type": "uint256"
+      }
+    ]
+  },
+  "inputs": [],
+  "kind": "read"
+}

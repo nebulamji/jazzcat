@@ -1,0 +1,110 @@
+{
+  "schema": "oak-recipe/v1",
+  "project": "new-jazz-city",
+  "name": "call-rounds-stats-of",
+  "description": "Call Book v3: a JazzCat's record under its current owner and over its life (right, wrong, flat, forfeit, and its track record score in the chops field). A record, not advice.",
+  "chainId": 4663,
+  "contract": "0x11a2E26A2233dbDDEB73854Ac15c827C14AbA3cA",
+  "function": {
+    "type": "function",
+    "name": "statsOf",
+    "stateMutability": "view",
+    "inputs": [
+      {
+        "type": "uint256",
+        "name": "tokenId"
+      },
+      {
+        "type": "uint8",
+        "name": "mode"
+      }
+    ],
+    "outputs": [
+      {
+        "type": "tuple",
+        "name": "current",
+        "components": [
+          {
+            "type": "int32",
+            "name": "chops"
+          },
+          {
+            "type": "uint32",
+            "name": "settled"
+          },
+          {
+            "type": "uint32",
+            "name": "wins"
+          },
+          {
+            "type": "uint32",
+            "name": "losses"
+          },
+          {
+            "type": "uint32",
+            "name": "flat"
+          },
+          {
+            "type": "uint32",
+            "name": "forfeits"
+          },
+          {
+            "type": "int64",
+            "name": "edgeBps"
+          }
+        ]
+      },
+      {
+        "type": "tuple",
+        "name": "lifetime",
+        "components": [
+          {
+            "type": "int32",
+            "name": "chops"
+          },
+          {
+            "type": "uint32",
+            "name": "settled"
+          },
+          {
+            "type": "uint32",
+            "name": "wins"
+          },
+          {
+            "type": "uint32",
+            "name": "losses"
+          },
+          {
+            "type": "uint32",
+            "name": "flat"
+          },
+          {
+            "type": "uint32",
+            "name": "forfeits"
+          },
+          {
+            "type": "int64",
+            "name": "edgeBps"
+          }
+        ]
+      },
+      {
+        "type": "bytes32",
+        "name": "control"
+      }
+    ]
+  },
+  "inputs": [
+    {
+      "name": "tokenId",
+      "type": "uint256",
+      "description": "JazzCat number."
+    },
+    {
+      "name": "mode",
+      "type": "uint8",
+      "description": "0 = PAPER, 1 = LIVE."
+    }
+  ],
+  "kind": "read"
+}
