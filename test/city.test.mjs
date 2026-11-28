@@ -182,3 +182,18 @@ test('line mode prints every event the merge keeps: two calls a Cat seals in one
   const r = spawnSync(process.execPath, [BIN, 'city', '--line', '--once'], {encoding: 'utf8', timeout: 20000, env: {...process.env, JAZZCAT_CITY_FIXTURE: file}});
   for (const l of ['#300320', '#300321', 'spent 0.01', 'spent 4.99']) assert.match(r.stdout, new RegExp(l.replace('.', '\\.')), l);
 });
+
+test('/look cat: what cat_self has read, and plainly what it is still reading (never "?")', async () => {
+  const answers = {
+    1: {identity: {displayName: 'Blue Train (JazzCat #1)', agent: 26026, wallet: CAT1, holder: '0xff122dfec6029510aa36996ec6f5a67c84d75bdb'}, record: {error: 'pending: still reading the record'}, pending: ['record'], retryAfter: 30},
+    2: {identity: {displayName: 'JazzCat #2', agent: 26466, wallet: '0xe954b56c13aa94fb60f6b3b38657eb82be74cd82', holder: '0xff122dfec6029510aa36996ec6f5a67c84d75bdb'}, record: {paidWork: {rows: 33, usdgReported: 31.55}}},
+    9: {identity: {displayName: 'JazzCat #9', agent: null, wallet: null, holder: null}, pending: ['identity', 'record'], retryAfter: 12}};
+  const city = {call: async (name, args) => answers[args.cat]};
+  assert.deepEqual(await runCommand({cmd: 'look-cat', cat: 1}, {city}), [`Blue Train (JazzCat #1) · agent 26026 · wallet ${CAT1}`,
+    'holder 0xff122dfec6029510aa36996ec6f5a67c84d75bdb · record still being read (ask again in about 30 s: /look cat 1)']);
+  assert.deepEqual(await runCommand({cmd: 'look-cat', cat: 2}, {city}), ['JazzCat #2 · agent 26466 · wallet 0xe954b56c13aa94fb60f6b3b38657eb82be74cd82',
+    'holder 0xff122dfec6029510aa36996ec6f5a67c84d75bdb · paid work 33 rows, 31.55 USDG reported']);
+  assert.deepEqual(await runCommand({cmd: 'look-cat', cat: 9}, {city}), ['JazzCat #9 · agent none · wallet not deployed',
+    'holder still being read (ask again in about 12 s) · record still being read (ask again in about 12 s: /look cat 9)']);
+  for (const c of [1, 2, 9]) for (const l of await runCommand({cmd: 'look-cat', cat: c}, {city})) assert.doesNotMatch(l, /\?|undefined|null/);
+});
