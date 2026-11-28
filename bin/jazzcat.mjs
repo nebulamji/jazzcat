@@ -15,7 +15,10 @@ import {createHash} from 'node:crypto';
 
 const URL_MCP = process.env.JAZZCAT_MCP_URL || 'https://njc-tx-explain.departmentofjazz.workers.dev/mcp';
 const NAME = 'new-jazz-city';
-const BRIDGE = {command: 'npx', args: ['-y', 'jazzcat', 'mcp']};
+// The bridge is pinned to this exact version (slime's review): npx never fetches a different jazzcat than the one you ran.
+const VERSION = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
+const PKG = `jazzcat@${VERSION}`;
+const BRIDGE = {command: 'npx', args: ['-y', PKG, 'mcp']};
 const say = s => process.stderr.write(s + '\n');
 const URL_SKILL = process.env.JAZZCAT_SKILL_URL || 'https://newjazzcity.pages.dev/skill.md';
 // The holder agent server (a Cat's holder signs in on the pair page and gets a jc_ token) and that page.
@@ -115,16 +118,16 @@ function jsonEntry(file, key, entry, dry) {
   fs.writeFileSync(file, JSON.stringify({...cur, [key]: {...(cur[key] || {}), [NAME]: entry}}, null, 2) + '\n');
   return {status: 'added', where: file};
 }
-const CODEX_BLOCK = `\n[mcp_servers.${NAME}]\ncommand = "npx"\nargs = ["-y", "jazzcat", "mcp"]\n`;
+const CODEX_BLOCK = `\n[mcp_servers.${NAME}]\ncommand = "npx"\nargs = ["-y", "${PKG}", "mcp"]\n`;
 function addMcp(client, {dry, project = false}) {
   switch (client) {
     case 'claude': {
-      if (!which('claude')) return {status: 'failed', where: 'Claude Code', note: `no claude CLI on PATH. Inside Claude Code run: claude mcp add --scope user ${NAME} -- npx -y jazzcat mcp`};
+      if (!which('claude')) return {status: 'failed', where: 'Claude Code', note: `no claude CLI on PATH. Inside Claude Code run: claude mcp add --transport http --scope user ${NAME} ${URL_MCP}`};
       const has = spawnQuiet('claude', ['mcp', 'get', NAME]) === 0;
       if (has) return {status: 'already', where: 'Claude Code, user scope', note: `an entry named ${NAME} exists; left as is (claude mcp get ${NAME} shows it)`};
       if (dry) return {status: 'would add', where: 'Claude Code, user scope'};
-      return spawnQuiet('claude', ['mcp', 'add', '--scope', 'user', NAME, '--', BRIDGE.command, ...BRIDGE.args]) === 0
-        ? {status: 'added', where: 'Claude Code, user scope'} : {status: 'failed', where: 'Claude Code', note: `claude mcp add failed. Run: claude mcp add --scope user ${NAME} -- npx -y jazzcat mcp`};
+      return spawnQuiet('claude', ['mcp', 'add', '--transport', 'http', '--scope', 'user', NAME, URL_MCP]) === 0
+        ? {status: 'added', where: 'Claude Code, user scope'} : {status: 'failed', where: 'Claude Code', note: `claude mcp add failed. Run: claude mcp add --transport http --scope user ${NAME} ${URL_MCP}`};
     }
     case 'codex': {
       const file = path.join(codexHome(), 'config.toml'), cur = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
@@ -134,8 +137,8 @@ function addMcp(client, {dry, project = false}) {
       fs.mkdirSync(path.dirname(file), {recursive: true}); fs.appendFileSync(file, CODEX_BLOCK);
       return {status: 'added', where: file};
     }
-    case 'cursor': return jsonEntry(project ? path.join(process.cwd(), '.cursor', 'mcp.json') : path.join(HOME(), '.cursor', 'mcp.json'), 'mcpServers', {...BRIDGE}, dry);
-    case 'vscode': return jsonEntry(project ? path.join(process.cwd(), '.vscode', 'mcp.json') : path.join(vscodeUserDir(), 'mcp.json'), 'servers', {type: 'stdio', ...BRIDGE}, dry);
+    case 'cursor': return jsonEntry(project ? path.join(process.cwd(), '.cursor', 'mcp.json') : path.join(HOME(), '.cursor', 'mcp.json'), 'mcpServers', {url: URL_MCP}, dry);
+    case 'vscode': return jsonEntry(project ? path.join(process.cwd(), '.vscode', 'mcp.json') : path.join(vscodeUserDir(), 'mcp.json'), 'servers', {type: 'http', url: URL_MCP}, dry);
     case 'desktop': { const r = jsonEntry(path.join(desktopDir(), 'claude_desktop_config.json'), 'mcpServers', {...BRIDGE}, dry); return r.status === 'added' ? {...r, note: 'restart Claude Desktop'} : r; }
   }
 }
@@ -208,7 +211,7 @@ async function tokenWorks(token) {
 }
 // A file that holds the token is readable by its owner only (an existing file keeps its mode on write, so set it).
 const private_ = f => { try { fs.chmodSync(f, 0o600); } catch {} };
-const HOLDER_BRIDGE = t => ({command: 'npx', args: ['-y', 'jazzcat', 'mcp', 'holder'], env: {JAZZCAT_HOLDER_TOKEN: t}});
+const HOLDER_BRIDGE = t => ({command: 'npx', args: ['-y', PKG, 'mcp', 'holder'], env: {JAZZCAT_HOLDER_TOKEN: t}});
 function holderJson(file, key, entry) {
   let cur = {};
   if (fs.existsSync(file)) { try { cur = JSON.parse(fs.readFileSync(file, 'utf8') || '{}'); } catch { return {status: 'failed', where: file, note: 'not valid JSON, left alone'}; } }
@@ -233,7 +236,7 @@ function holderEntry(client, token) {
       // Drop an earlier [mcp_servers.jazzcats] block (and its sub-tables), then add ours: the stdio bridge with the token in env.
       const out = [], lines = cur.split('\n'); let skip = false, had = false;
       for (const l of lines) { const h = /^\s*\[([^\]]+)\]\s*$/.exec(l); if (h) { skip = h[1] === `mcp_servers.${HOLDER_NAME}` || h[1].startsWith(`mcp_servers.${HOLDER_NAME}.`); if (skip) had = true; } if (!skip) out.push(l); }
-      const block = `\n[mcp_servers.${HOLDER_NAME}]\ncommand = "npx"\nargs = ["-y", "jazzcat", "mcp", "holder"]\nenv = { JAZZCAT_HOLDER_TOKEN = "${token}" }\n`;
+      const block = `\n[mcp_servers.${HOLDER_NAME}]\ncommand = "npx"\nargs = ["-y", "${PKG}", "mcp", "holder"]\nenv = { JAZZCAT_HOLDER_TOKEN = "${token}" }\n`;
       fs.mkdirSync(path.dirname(file), {recursive: true}); fs.writeFileSync(file, out.join('\n').replace(/\n+$/, '\n') + block, {mode: 0o600}); private_(file);
       return {status: had ? 'replaced' : 'added', where: file, note: had ? `replaced your earlier "${HOLDER_NAME}" entry` : null};
     }

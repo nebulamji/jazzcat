@@ -9,6 +9,8 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
 const BIN = new URL('../bin/jazzcat.mjs', import.meta.url).pathname;
+const PKG = 'jazzcat@' + JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version; // the pinned bridge
+const CITY = 'https://njc-tx-explain.departmentofjazz.workers.dev/mcp';
 const tmp = () => mkdtempSync(join(tmpdir(), 'jazzcat-cli-'));
 // Every run gets a temporary HOME, an empty PATH and no CODEX_HOME/APPDATA unless a test sets them: the one command
 // writes agent configs, so a test must never reach this machine's own.
@@ -24,7 +26,7 @@ test('help, url and an unknown command', () => {
 test('connect cursor and codex write one new-jazz-city entry that runs the bridge', () => {
   const cwd = tmp(), home = tmp(), env = {HOME: home, CODEX_HOME: '', PATH: tmp()};
   assert.equal(run(['connect', 'cursor', '--no-skill'], {cwd, env}).status, 0);
-  assert.deepEqual(JSON.parse(readFileSync(join(cwd, '.cursor', 'mcp.json'), 'utf8')).mcpServers['new-jazz-city'], {command: 'npx', args: ['-y', 'jazzcat', 'mcp']});
+  assert.deepEqual(JSON.parse(readFileSync(join(cwd, '.cursor', 'mcp.json'), 'utf8')).mcpServers['new-jazz-city'], {url: CITY}, 'Cursor: the City over HTTP, no npx');
   assert.equal(run(['connect', 'codex', '--no-skill'], {env}).status, 0);
   assert.equal(run(['connect', 'codex', '--no-skill'], {env}).status, 0);
   const toml = readFileSync(join(home, '.codex', 'config.toml'), 'utf8');
@@ -119,10 +121,11 @@ test('one command: finds the agents, adds the MCP to each, saves the skill, and 
     assert.equal(existsSync(join(home, '.cursor', 'mcp.json')), false); assert.equal(existsSync(join(home, '.claude', 'skills')), false, 'a dry run writes nothing');
     const r = await require_spawn([], env);
     assert.equal(r.status, 0, r.stderr);
-    assert.ok(claude.calls().includes('mcp add --scope user new-jazz-city -- npx -y jazzcat mcp'), 'Claude Code: claude mcp add, user scope');
-    assert.match(readFileSync(join(home, '.codex', 'config.toml'), 'utf8'), /\[mcp_servers\.new-jazz-city\]\ncommand = "npx"\nargs = \["-y", "jazzcat", "mcp"\]/);
-    assert.deepEqual(JSON.parse(readFileSync(join(home, '.cursor', 'mcp.json'), 'utf8')).mcpServers['new-jazz-city'], {command: 'npx', args: ['-y', 'jazzcat', 'mcp']}, 'Cursor: the global config');
-    assert.deepEqual(JSON.parse(readFileSync(join(home, '.config', 'Code', 'User', 'mcp.json'), 'utf8')).servers['new-jazz-city'], {type: 'stdio', command: 'npx', args: ['-y', 'jazzcat', 'mcp']}, 'VS Code: the user config');
+    assert.ok(claude.calls().includes(`mcp add --transport http --scope user new-jazz-city ${CITY}`), 'Claude Code: the City over HTTP, user scope');
+    assert.ok(readFileSync(join(home, '.codex', 'config.toml'), 'utf8').includes(`[mcp_servers.new-jazz-city]\ncommand = "npx"\nargs = ["-y", "${PKG}", "mcp"]`), 'Codex: the bridge, pinned');
+    assert.deepEqual(JSON.parse(readFileSync(join(home, '.cursor', 'mcp.json'), 'utf8')).mcpServers['new-jazz-city'], {url: CITY}, 'Cursor: the global config, over HTTP');
+    assert.deepEqual(JSON.parse(readFileSync(join(home, '.config', 'Code', 'User', 'mcp.json'), 'utf8')).servers['new-jazz-city'], {type: 'http', url: CITY}, 'VS Code: the user config, over HTTP');
+    assert.deepEqual(JSON.parse(readFileSync(join(home, '.config', 'Claude', 'claude_desktop_config.json'), 'utf8')).mcpServers['new-jazz-city'], {command: 'npx', args: ['-y', PKG, 'mcp']}, 'Claude Desktop: the bridge, pinned');
     assert.ok(JSON.parse(readFileSync(join(home, '.config', 'Claude', 'claude_desktop_config.json'), 'utf8')).mcpServers['new-jazz-city'], 'Claude Desktop');
     for (const d of [['.claude', 'skills'], ['.codex', 'skills'], ['.cursor', 'skills'], ['.copilot', 'skills']]) assert.equal(readFileSync(join(home, ...d, 'jazzcats', 'SKILL.md'), 'utf8'), SKILL, d.join('/'));
     assert.match(r.stderr, /Claude Desktop reads skills from the app/);
@@ -186,9 +189,9 @@ test('holder sign-in: --holder-token-stdin writes a jazzcats entry to every agen
     assert.ok(claude.calls().includes(`mcp add --transport http --scope user jazzcats ${url} --header Authorization: Bearer ${GOOD}`), 'Claude Code: http entry with the header');
     assert.deepEqual(JSON.parse(readFileSync(join(home, '.cursor', 'mcp.json'), 'utf8')).mcpServers.jazzcats, {url, headers: {Authorization: `Bearer ${GOOD}`}});
     assert.deepEqual(JSON.parse(readFileSync(join(home, '.config', 'Code', 'User', 'mcp.json'), 'utf8')).servers.jazzcats, {type: 'http', url, headers: {Authorization: `Bearer ${GOOD}`}});
-    assert.deepEqual(JSON.parse(readFileSync(join(home, '.config', 'Claude', 'claude_desktop_config.json'), 'utf8')).mcpServers.jazzcats, {command: 'npx', args: ['-y', 'jazzcat', 'mcp', 'holder'], env: {JAZZCAT_HOLDER_TOKEN: GOOD}});
+    assert.deepEqual(JSON.parse(readFileSync(join(home, '.config', 'Claude', 'claude_desktop_config.json'), 'utf8')).mcpServers.jazzcats, {command: 'npx', args: ['-y', PKG, 'mcp', 'holder'], env: {JAZZCAT_HOLDER_TOKEN: GOOD}});
     const toml = readFileSync(join(home, '.codex', 'config.toml'), 'utf8');
-    assert.match(toml, new RegExp(`\\[mcp_servers\\.jazzcats\\]\\ncommand = "npx"\\nargs = \\["-y", "jazzcat", "mcp", "holder"\\]\\nenv = \\{ JAZZCAT_HOLDER_TOKEN = "${GOOD}" \\}`));
+    assert.ok(toml.includes(`[mcp_servers.jazzcats]\ncommand = "npx"\nargs = ["-y", "${PKG}", "mcp", "holder"]\nenv = { JAZZCAT_HOLDER_TOKEN = "${GOOD}" }`), 'Codex holder entry: the pinned bridge');
     assert.match(toml, /\[mcp_servers\.new-jazz-city\]/, 'the City entry is kept');
     const {statSync} = await import('node:fs');
     for (const f of [join(home, '.cursor', 'mcp.json'), join(home, '.codex', 'config.toml')]) assert.equal(statSync(f).mode & 0o077, 0, `${f} is private (0600)`);
