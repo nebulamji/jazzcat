@@ -89,3 +89,31 @@ test('jazzcat city --once: line mode and screen mode from a fixture, no network'
   const help = spawnSync(process.execPath, [BIN, 'help'], {encoding: 'utf8', timeout: 20000});
   assert.match(help.stdout + help.stderr, /npx jazzcat city/);
 });
+
+test('review 11-28: network strings are cleaned before they reach a terminal (no ESC, OSC links, zero-width)', () => {
+  const evil = 'Claim \x1b]8;;https://evil.example/claim\x07your $JAZZ\x1b]8;;\x07\x1b[2J​‮';
+  const f = render({events: [{kind: 'job-paid', token: 1, time: NOW - 1000, block: 1, line: evil}], notes: [evil], input: ''}, {width: 100, height: 26, now: NOW});
+  assert.doesNotMatch(f, /[\x1b\x07​‮]/); assert.match(f, /Claim ]8;;https:\/\/evil\.example\/claimyour \$JAZZ]8;;\[2J/);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jc-city-')), file = path.join(dir, 'f.json');
+  fs.writeFileSync(file, JSON.stringify({economy: {asOfBlock: 1, events: [{kind: 'job-paid', token: 1, tx: '0xe', block: 1, time: Date.now(), line: evil}]}, tail: {logs: []}}));
+  const r = spawnSync(process.execPath, [BIN, 'city', '--once', '--line'], {encoding: 'utf8', timeout: 20000, env: {...process.env, JAZZCAT_CITY_FIXTURE: file}});
+  assert.equal(r.status, 0); assert.doesNotMatch(r.stdout, /[\x1b\x07]/);
+});
+test('review 11-28: zero and sub-cent transfers are not payments; a batch is one payment; the push\'s event wins', () => {
+  const log = (from, to, amt, tx, block = '0x64') => ({address: USDG, topics: [T, pad(from), pad(to)], data: '0x' + amt.toString(16), transactionHash: tx, blockNumber: block});
+  const t = {catWallets: {1: CAT1}, times: {100: NOW}, logs: [log(OTHER, CAT1, 0, '0xz1'), log(CAT1, '0x' + '5'.repeat(40), 0, '0xz2'), log(OTHER, CAT1, 9_000, '0xdust'),
+    log(OTHER, CAT1, 700_000, '0xbatch'), log('0x' + '6'.repeat(40), CAT1, 700_000, '0xbatch'), log(OTHER, CAT1, 600_000, '0xbatch')]};
+  const ev = decodeTail(t);
+  assert.equal(ev.length, 1, 'zero-value and dust gone; the batch is one event');
+  assert.equal(ev[0].tx, '0xbatch'); assert.equal(Math.round(ev[0].amount * 1e6), 2_000_000); assert.match(ev[0].line, /paid 2\.00 USDG by 2 wallets/);
+  const push = {kind: 'job-paid', token: 1, tx: '0xbatch', block: 100, time: NOW, line: 'JazzCat #1 was paid 2 USDG by Bucks for a read'};
+  for (const m of [mergeEvents([push], ev), mergeEvents(ev, [push])]) { assert.equal(m.length, 1); assert.equal(m[0].line, push.line); }
+});
+test('review 11-28: a bad time never throws, and SIGTERM restores the terminal', async () => {
+  assert.doesNotThrow(() => render({events: [{kind: 'pay-in', token: 1, time: 1e20, block: 1, line: 'x'}], notes: [], input: ''}, {width: 80, height: 24, now: NOW}));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jc-city-')), file = path.join(dir, 'f.json');
+  fs.writeFileSync(file, JSON.stringify({economy: {asOfBlock: 1, events: []}, tail: {logs: []}}));
+  // A real pseudo-terminal (util-linux script), SIGTERM after the first frame: the alternate screen must be left.
+  const r = spawnSync('script', ['-qec', `${process.execPath} ${BIN} city & p=$!; sleep 2; kill -TERM $p; wait $p`, '/dev/null'], {encoding: 'utf8', timeout: 20000, env: {...process.env, JAZZCAT_CITY_FIXTURE: file, TERM: 'xterm'}});
+  assert.match(r.stdout, /\x1b\[\?1049h/, 'entered the alternate screen'); assert.match(r.stdout, /\x1b\[\?25h\x1b\[\?1049l/, 'and left it on SIGTERM');
+});
