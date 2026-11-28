@@ -170,3 +170,15 @@ test('addresses in full: line mode prints the push\'s short forms in full', () =
   assert.match(r.stdout, new RegExp(`open on chain \\(${CAT1}\\)`)); assert.match(r.stdout, /paid 1\.50 USDG by 0x7{40}/);
   assert.doesNotMatch(r.stdout, SHORTENED);
 });
+
+test('line mode prints every event the merge keeps: two calls a Cat seals in one tx and two spends in one tx are two lines', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jc-line-')), file = path.join(dir, 'f.json');
+  const ev = [
+    {kind: 'call-sealed', token: 1, tx: '0x7c', callId: 300320, block: 6, time: NOW, line: 'JazzCat #1 sealed call #300320'},
+    {kind: 'call-sealed', token: 1, tx: '0x7c', callId: 300321, block: 6, time: NOW, line: 'JazzCat #1 sealed call #300321'},
+    {kind: 'cat-spent', token: 1, tx: '0x6b', to: '0xd893', block: 5, time: NOW, line: 'JazzCat #1 spent 0.01 USDG'},
+    {kind: 'cat-spent', token: 1, tx: '0x6b', to: '0xf425', block: 5, time: NOW, line: 'JazzCat #1 spent 4.99 USDG'}];
+  fs.writeFileSync(file, JSON.stringify({economy: {asOfBlock: 6, events: ev}, tail: {logs: []}}));
+  const r = spawnSync(process.execPath, [BIN, 'city', '--line', '--once'], {encoding: 'utf8', timeout: 20000, env: {...process.env, JAZZCAT_CITY_FIXTURE: file}});
+  for (const l of ['#300320', '#300321', 'spent 0.01', 'spent 4.99']) assert.match(r.stdout, new RegExp(l.replace('.', '\\.')), l);
+});
