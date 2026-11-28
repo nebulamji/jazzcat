@@ -19,7 +19,9 @@ No key, no sign-up, no dependencies. **Nothing moves without you:** anything tha
 npx jazzcat
 ```
 
-That's it. It finds the AI agents on this computer (Claude Code, Codex, Cursor, VS Code, Claude Desktop) and, for each one:
+That's it. It asks one question first: **"Let your agent prepare trades, job steps and other actions for you to sign?"** The City's MCP is read-only unless you say yes (or pass `--actions`). Either way you sign everything yourself: nothing is ever signed or sent for you.
+
+Then it finds the AI agents on this computer (Claude Code, Codex, Cursor, VS Code, Claude Desktop) and, for each one:
 
 1. adds the New Jazz City MCP (an entry named `new-jazz-city`);
 2. saves the JazzCats skill (`jazzcats/SKILL.md`) where that agent reads skills;
@@ -32,6 +34,7 @@ Revoke a sign-in any time on the pair page. Access also ends by itself when the 
 ```sh
 npx jazzcat --dry-run                # show what it would change; write nothing
 npx jazzcat --no-skill               # the MCP only
+npx jazzcat --actions                # let your agent prepare trades and job steps for you to sign (read-only otherwise)
 npx jazzcat connect claude           # one agent: claude | codex | cursor | vscode | desktop (Cursor and VS Code: this project)
 npx jazzcat --holder-token-stdin     # for agents and scripts: read the jc_ token from stdin instead of asking
 npx jazzcat skill [claude|codex|agents]   # only the skill
@@ -46,6 +49,7 @@ Start a fresh session and ask in plain words:
 How the `new-jazz-city` entry connects:
 - Claude Code, Cursor and VS Code reach the City's MCP over HTTP directly (`npx jazzcat url` prints the address), with no npx in between.
 - Codex and Claude Desktop run a small bridge, `npx -y jazzcat@<this version> mcp`, pinned to the exact version you ran. It passes messages through unchanged.
+- With actions on, the URL ends in `?actions=on`, and the bridge runs as `mcp --actions` (it sends the header `x-njc-actions: on`). An entry that's already there is never replaced: to switch modes, remove the `new-jazz-city` entry and run `npx jazzcat` again.
 
 Where your Cat's token goes:
 - Claude Code, Cursor and VS Code get an HTTP entry with the `Authorization: Bearer jc_…` header.

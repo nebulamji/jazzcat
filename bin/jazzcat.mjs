@@ -19,6 +19,11 @@ const NAME = 'new-jazz-city';
 const VERSION = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 const PKG = `jazzcat@${VERSION}`;
 const BRIDGE = {command: 'npx', args: ['-y', PKG, 'mcp']};
+// The City's MCP is read-only by default: tools that prepare a trade, a job step or another action you sign are listed
+// only for a connection that opts in (?actions=on, or the header x-njc-actions: on). --actions, or yes to the question.
+const URL_MCP_ACTIONS = URL_MCP + (URL_MCP.includes('?') ? '&' : '?') + 'actions=on';
+const BRIDGE_ACTIONS = {command: 'npx', args: ['-y', PKG, 'mcp', '--actions']};
+const cityUrl = actions => actions ? URL_MCP_ACTIONS : URL_MCP, cityBridge = actions => actions ? BRIDGE_ACTIONS : BRIDGE;
 const say = s => process.stderr.write(s + '\n');
 const URL_SKILL = process.env.JAZZCAT_SKILL_URL || 'https://newjazzcity.pages.dev/skill.md';
 // The holder agent server (a Cat's holder signs in on the pair page and gets a jc_ token) and that page.
@@ -41,6 +46,7 @@ One command sets up every agent on this computer (Claude Code, Codex, Cursor, VS
   npx jazzcat                    add the New Jazz City MCP to each agent found, and save the JazzCats skill where it reads skills
   npx jazzcat --dry-run          show what it would change; write nothing
   npx jazzcat --no-skill         the MCP only
+  npx jazzcat --actions          let your agent prepare trades and job steps for you to sign (read-only otherwise)
 Then it asks whether you hold a JazzCat. On yes it opens the pair page, where you sign in with the wallet that holds the Cat
 (nothing is paid), and you paste the jc_ token it shows (hidden; never printed). Each agent gets a "jazzcats" entry with it.
   npx jazzcat --holder-token-stdin   for agents: read the jc_ token from stdin instead of asking
@@ -118,13 +124,20 @@ function jsonEntry(file, key, entry, dry) {
   fs.writeFileSync(file, JSON.stringify({...cur, [key]: {...(cur[key] || {}), [NAME]: entry}}, null, 2) + '\n');
   return {status: 'added', where: file};
 }
-const CODEX_BLOCK = `\n[mcp_servers.${NAME}]\ncommand = "npx"\nargs = ["-y", "${PKG}", "mcp"]\n`;
-function addMcp(client, {dry, project = false}) {
+const codexBlock = actions => `\n[mcp_servers.${NAME}]\ncommand = "npx"\nargs = ["-y", "${PKG}", "mcp"${actions ? ', "--actions"' : ''}]\n`;
+// An entry that's already there is never replaced; when it's the other mode, the note says how to switch.
+const switchNote = actions => actions ? ` To let it prepare actions instead, remove it and run npx jazzcat --actions.` : '';
+function addMcp(client, {dry, project = false, actions = false}) {
+  const r = addMcpEntry(client, {dry, project, actions});
+  return actions && r.status === 'left' ? {...r, note: r.note + switchNote(actions)} : r;
+}
+function addMcpEntry(client, {dry, project, actions}) {
+  const URL_MCP = cityUrl(actions), BRIDGE = cityBridge(actions), CODEX_BLOCK = codexBlock(actions);
   switch (client) {
     case 'claude': {
       if (!which('claude')) return {status: 'failed', where: 'Claude Code', note: `no claude CLI on PATH. Inside Claude Code run: claude mcp add --transport http --scope user ${NAME} ${URL_MCP}`};
       const has = spawnQuiet('claude', ['mcp', 'get', NAME]) === 0;
-      if (has) return {status: 'already', where: 'Claude Code, user scope', note: `an entry named ${NAME} exists; left as is (claude mcp get ${NAME} shows it)`};
+      if (has) return {status: 'already', where: 'Claude Code, user scope', note: `an entry named ${NAME} exists; left as is (claude mcp get ${NAME} shows it).${actions ? ` If it's the read-only one: claude mcp remove ${NAME}, then npx jazzcat --actions.` : ''}`};
       if (dry) return {status: 'would add', where: 'Claude Code, user scope'};
       return spawnQuiet('claude', ['mcp', 'add', '--transport', 'http', '--scope', 'user', NAME, URL_MCP]) === 0
         ? {status: 'added', where: 'Claude Code, user scope'} : {status: 'failed', where: 'Claude Code', note: `claude mcp add failed. Run: claude mcp add --transport http --scope user ${NAME} ${URL_MCP}`};
@@ -264,7 +277,7 @@ async function holderSignIn(clients, {fromStdin}) {
   return any;
 }
 
-// npx jazzcat / npx jazzcat connect [client] [--no-skill] [--dry-run] [--holder-token-stdin]
+// npx jazzcat / npx jazzcat connect [client] [--no-skill] [--dry-run] [--actions] [--holder-token-stdin]
 async function connect(args) {
   const dry = args.includes('--dry-run'), noSkill = args.includes('--no-skill'), fromStdin = args.includes('--holder-token-stdin'), askHolder = fromStdin || args.includes('--holder') || !!process.stdin.isTTY;
   const rest = args.filter(a => !a.startsWith('--'));
@@ -275,13 +288,18 @@ async function connect(args) {
     say(`No AI agents found on this computer (looked for ${Object.values(AGENTS).map(a => a.label).join(', ')}).\nPick one: npx jazzcat connect claude | codex | cursor | vscode | desktop`);
     process.exit(1);
   }
+  let actions = args.includes('--actions');
+  if (!actions && !dry && !fromStdin && process.stdin.isTTY) {
+    const yes = await ask('Let your agent prepare trades, job steps and other actions for you to sign? You sign every one yourself; read-only otherwise. (y/N) ');
+    actions = /^y(es)?$/i.test(yes || '');
+  }
   let text = null, skillErr = null;
   if (!noSkill && clients.some(c => AGENTS[c].skills)) { try { text = await fetchSkill(); } catch (e) { skillErr = e.message; } }
   say(dry ? 'Dry run: nothing is written.' : 'Setting up New Jazz City:');
   let ok = 0;
   const savedSkill = new Set();
   for (const c of clients) {
-    const a = AGENTS[c], m = addMcp(c, {dry, project: !!picked});
+    const a = AGENTS[c], m = addMcp(c, {dry, project: !!picked, actions});
     if (['added', 'already', 'would add', 'left'].includes(m.status)) ok++;
     say(line(a.label, 'MCP', m));
     if (noSkill) continue;
@@ -292,6 +310,8 @@ async function connect(args) {
   }
   const missing = picked ? [] : Object.keys(AGENTS).filter(c => !clients.includes(c)).map(c => AGENTS[c].label);
   if (missing.length) say(`Not found: ${missing.join(', ')}.`);
+  say(actions ? 'Mode: your agent can prepare actions (trades, job steps) for you to sign. Nothing is ever signed or sent for you.'
+    : 'Mode: read-only. To let your agent prepare trades and job steps for you to sign: npx jazzcat --actions');
   if (dry) { if (askHolder) say(`Then it would ask whether you hold a JazzCat, and sign you in through ${URL_PAIR}.`); return; }
   if (!ok) process.exit(1);
   const signedIn = askHolder ? await holderSignIn(clients, {fromStdin}) : null;
@@ -302,7 +322,7 @@ async function connect(args) {
 }
 
 // stdio <-> Streamable HTTP bridge. Each JSON-RPC line on stdin is POSTed to the MCP; replies (JSON or SSE) go to stdout.
-async function bridge(target) {
+async function bridge(target, actions = false) {
   const holder = target === 'holder', url = holder ? URL_HOLDER : URL_MCP, token = holder ? process.env.JAZZCAT_HOLDER_TOKEN || '' : '';
   let session = null;
   const out = m => process.stdout.write(JSON.stringify(m) + '\n');
@@ -314,6 +334,7 @@ async function bridge(target) {
     try {
       const headers = {'content-type': 'application/json', accept: 'application/json, text/event-stream', 'user-agent': 'jazzcat/1'};
       if (session) headers['mcp-session-id'] = session;
+      if (!holder && actions) headers['x-njc-actions'] = 'on';
       if (holder) { if (!TOKEN_RE.test(token)) return fail(msg.id, 'JAZZCAT_HOLDER_TOKEN is not set to a jc_ token: run npx jazzcat and sign in with your Cat.'); headers.authorization = `Bearer ${token}`; }
       const r = await fetch(url, {method: 'POST', headers, body: JSON.stringify(msg)});
       const sid = r.headers.get('mcp-session-id'); if (sid) session = sid;
@@ -379,8 +400,8 @@ async function recipesCmd(args) {
 
 const [cmd, ...rest] = process.argv.slice(2);
 const arg = rest[0];
-if (!cmd || cmd === 'connect' || ['--dry-run', '--no-skill', '--holder-token-stdin', '--holder'].includes(cmd)) await connect(cmd === 'connect' ? rest : process.argv.slice(2));
-else if (cmd === 'mcp') bridge(arg);
+if (!cmd || cmd === 'connect' || ['--dry-run', '--no-skill', '--holder-token-stdin', '--holder', '--actions'].includes(cmd)) await connect(cmd === 'connect' ? rest : process.argv.slice(2));
+else if (cmd === 'mcp') bridge(arg, rest.includes('--actions'));
 else if (cmd === 'url') console.log(URL_MCP);
 else if (cmd === 'proof') await proof(rest);
 else if (cmd === 'recipes') await recipesCmd(rest);
