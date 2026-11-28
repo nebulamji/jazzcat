@@ -52,7 +52,7 @@ How the `new-jazz-city` entry connects:
 - With actions on, the URL ends in `?actions=on`, and the bridge runs as `mcp --actions` (it sends the header `x-njc-actions: on`). An entry that's already there is never replaced: to switch modes, remove the `new-jazz-city` entry and run `npx jazzcat` again.
 
 Where your Cat's token goes:
-- Claude Code, Cursor and VS Code get an HTTP entry with the `Authorization: Bearer jc_…` header.
+- Claude Code, Cursor and VS Code get an HTTP entry with the `Authorization: Bearer jc_…` header. For Claude Code it's written straight into `~/.claude.json` (or `$CLAUDE_CONFIG_DIR/.claude.json`), so the token never appears on a command line.
 - Codex and Claude Desktop run the same pinned bridge (`npx -y jazzcat@<this version> mcp holder`), with the token in the entry's env.
 
 Always in your user-level config, never in a project file you might commit. Files that hold it are readable by you only.

@@ -186,7 +186,9 @@ test('holder sign-in: --holder-token-stdin writes a jazzcats entry to every agen
     assert.equal(r.status, 0, r.stderr);
     assert.ok(!(r.stdout + r.stderr).includes(GOOD), 'the token is never printed');
     assert.match(r.stderr, /Your Cat is signed in/); assert.match(r.stderr, /Revoke it any time on https:\/\/newjazzcity\.pages\.dev\/pair\//); assert.match(r.stderr, /ends by itself when the Cat is sold/);
-    assert.ok(claude.calls().includes(`mcp add --transport http --scope user jazzcats ${url} --header Authorization: Bearer ${GOOD}`), 'Claude Code: http entry with the header');
+    // §11: no command line carries the token; Claude Code's entry is in ~/.claude.json.
+    assert.ok(!claude.calls().includes(GOOD), 'no claude command line carries the token');
+    assert.deepEqual(JSON.parse(readFileSync(join(home, '.claude.json'), 'utf8')).mcpServers.jazzcats, {type: 'http', url, headers: {Authorization: `Bearer ${GOOD}`}}, 'Claude Code: http entry with the header');
     assert.deepEqual(JSON.parse(readFileSync(join(home, '.cursor', 'mcp.json'), 'utf8')).mcpServers.jazzcats, {url, headers: {Authorization: `Bearer ${GOOD}`}});
     assert.deepEqual(JSON.parse(readFileSync(join(home, '.config', 'Code', 'User', 'mcp.json'), 'utf8')).servers.jazzcats, {type: 'http', url, headers: {Authorization: `Bearer ${GOOD}`}});
     assert.deepEqual(JSON.parse(readFileSync(join(home, '.config', 'Claude', 'claude_desktop_config.json'), 'utf8')).mcpServers.jazzcats, {command: 'npx', args: ['-y', PKG, 'mcp', 'holder'], env: {JAZZCAT_HOLDER_TOKEN: GOOD}});
@@ -200,7 +202,7 @@ test('holder sign-in: --holder-token-stdin writes a jazzcats entry to every agen
     assert.equal(again.status, 0, again.stderr); assert.match(again.stderr, /replaced your earlier "jazzcats" entry/);
     const toml2 = readFileSync(join(home, '.codex', 'config.toml'), 'utf8');
     assert.equal(toml2.split('[mcp_servers.jazzcats]').length, 2, 'one jazzcats block'); assert.ok(!toml2.includes(GOOD) && toml2.includes(GOOD2), 'the old token is gone');
-    assert.ok(claude.calls().includes('mcp remove --scope user jazzcats'));
+    assert.equal(JSON.parse(readFileSync(join(home, '.claude.json'), 'utf8')).mcpServers.jazzcats.headers.Authorization, `Bearer ${GOOD2}`, 'Claude Code entry replaced in place');
   } finally { hs.server.close(); }
 });
 test('holder sign-in: a token the server refuses writes nothing; the y/N question; no question without a terminal', async () => {
@@ -322,4 +324,21 @@ test('the bridge times out a hung call and flushes every answer before it exits'
     assert.match(lines.find(l => l.id === 1).error.message, /did not answer within/);
     assert.deepEqual(lines.find(l => l.id === 2)?.result, {ok: 2}, 'the next call still runs and its answer is flushed');
   } finally { srv.close(); }
+});
+
+// tg-4d deep review §11: the holder token never goes on a command line (any local user can read another process's argv).
+// Claude Code's user-scope entry is written straight into its config (~/.claude.json), atomically, keeping every other key.
+test('holder sign-in: the token never reaches argv; Claude Code gets the entry in ~/.claude.json, other keys kept', async () => {
+  const hs = await holderServer(), home = holderHome(), claude = fakeClaude(), url = hs.env.JAZZCAT_HOLDER_MCP_URL;
+  const {writeFileSync: wf} = await import('node:fs');
+  wf(join(home, '.claude.json'), JSON.stringify({numStartups: 7, projects: {'/x': {allowedTools: []}}, mcpServers: {other: {type: 'http', url: 'https://other.example/mcp'}}}));
+  try {
+    const r = await spawnIn(['--no-skill', '--holder-token-stdin'], {...hs.env, HOME: home, PATH: claude.bin}, GOOD + '\n');
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(!claude.calls().includes(GOOD), 'no claude command line carries the token: ' + claude.calls());
+    const cfg = JSON.parse(readFileSync(join(home, '.claude.json'), 'utf8'));
+    assert.deepEqual(cfg.mcpServers.jazzcats, {type: 'http', url, headers: {Authorization: `Bearer ${GOOD}`}});
+    assert.equal(cfg.numStartups, 7); assert.deepEqual(cfg.projects, {'/x': {allowedTools: []}}); assert.equal(cfg.mcpServers.other.url, 'https://other.example/mcp');
+    const {statSync} = await import('node:fs'); assert.equal(statSync(join(home, '.claude.json')).mode & 0o077, 0, '~/.claude.json stays private');
+  } finally { hs.server.close(); }
 });
