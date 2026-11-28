@@ -328,13 +328,16 @@ async function connect(args) {
 
 // stdio <-> Streamable HTTP bridge. Each JSON-RPC line on stdin is POSTed to the MCP; replies (JSON or SSE) go to stdout.
 const BRIDGE_TIMEOUT_MS = Number(process.env.JAZZCAT_BRIDGE_TIMEOUT_MS) || 60000;
+const BRIDGE_CONCURRENCY = Math.max(1, Math.min(16, Number(process.env.JAZZCAT_BRIDGE_CONCURRENCY) || 4));
 async function bridge(target, actions = false) {
   const holder = target === 'holder', url = holder ? URL_HOLDER : URL_MCP, token = holder ? process.env.JAZZCAT_HOLDER_TOKEN || '' : '';
   let session = null;
   const out = m => process.stdout.write(JSON.stringify(m) + '\n');
   const fail = (id, message) => { if (id !== undefined && id !== null) out({jsonrpc: '2.0', id, error: {code: -32000, message}}); };
   const queue = [];
-  let busy = false;
+  // tg-4d deep review §11: calls run side by side (JSON-RPC answers carry their ids), up to BRIDGE_CONCURRENCY at once, so a
+  // slow call never holds the ones behind it. initialize runs alone: the session id it sets rides on every call after it.
+  let inflight = 0, barrier = false;
   async function send(line) {
     let msg; try { msg = JSON.parse(line); } catch { return; }
     try {
@@ -358,11 +361,18 @@ async function bridge(target, actions = false) {
       }
     } catch (e) { fail(msg.id, e?.name === 'TimeoutError' ? `New Jazz City did not answer within ${BRIDGE_TIMEOUT_MS / 1000} s; try again.` : `Couldn't reach New Jazz City: ${e.message}`); }
   }
-  async function pump() { if (busy) return; busy = true; while (queue.length) await send(queue.shift()); busy = false; }
+  function pump() {
+    while (queue.length && !barrier && inflight < BRIDGE_CONCURRENCY) {
+      let method = null; try { method = JSON.parse(queue[0]).method; } catch {}
+      if (method === 'initialize' && inflight > 0) return; // wait for the calls already out, then initialize alone
+      const line = queue.shift(); inflight++; if (method === 'initialize') barrier = true;
+      send(line).finally(() => { inflight--; if (method === 'initialize') barrier = false; pump(); });
+    }
+  }
   const rl = readline.createInterface({input: process.stdin});
   rl.on('line', l => { if (l.trim()) { queue.push(l); pump(); } });
   // Exit only after the last answer is flushed to the client (a pipe write is asynchronous).
-  rl.on('close', async () => { while (busy || queue.length) await new Promise(r => setTimeout(r, 50)); process.stdout.write('', () => process.exit(0)); });
+  rl.on('close', async () => { while (inflight || queue.length) await new Promise(r => setTimeout(r, 50)); process.stdout.write('', () => process.exit(0)); });
 }
 
 // jazzcat proof: prints the proof as JSON; exits 0 when it holds, 1 when it doesn't, 2 on a usage mistake.
