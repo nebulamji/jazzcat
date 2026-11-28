@@ -413,27 +413,33 @@ async function cityCmd(args) {
   const econ = await get(C.ECONOMY_URL);
   const state = {events: C.mergeEvents([], econ.events || []), head: econ.asOfBlock, notes: [], input: ''};
   let from = Number(econ.asOfBlock || 0), printed = new Set();
-  const key = e => `${e.tx}|${e.kind}|${e.token ?? ''}`;
+  const key = e => `${e.tx}|${e.kind}|${e.token ?? ''}|${e.src || ''}`;
   const pull = async () => {
     try { const t = await get(`${C.TAIL_URL}?from=${from}`); state.head = t.head || state.head; from = Math.max(from, Number(t.to || from));
       state.events = C.mergeEvents(state.events, C.decodeTail(t)); } catch {}
   };
   await pull();
-  const stamp = t => t ? new Date(t).toISOString().slice(11, 16) : '--:--';
+  const stamp = C.hhmm;
   if (lineMode) {
     const emit = () => { for (const e of [...state.events].reverse()) { if (printed.has(key(e))) continue; printed.add(key(e));
-      console.log(`${stamp(e.time)}  ${C.placeName(C.placeOf(e)).padEnd(14)}  ${e.line || e.kind}`); } };
-    console.log(`New Jazz City · Robinhood Chain · block ${state.head ?? '…'} (read only; map: ${C.MAP_URL})`);
+      console.log(`${stamp(e.time)}  ${C.placeName(C.placeOf(e)).padEnd(14)}  ${C.clean(e.line || e.kind)}`); } };
+    console.log(`New Jazz City · Robinhood Chain · block ${Number.isFinite(Number(state.head)) ? Number(state.head) : '…'} (read only; map: ${C.MAP_URL})`);
     for (const e of state.events.slice(12)) printed.add(key(e)); // the newest 12 to start
     emit(); if (once) return;
     setInterval(async () => { await pull(); emit(); }, 5000);
     return;
   }
-  const out = process.stdout, draw = () => out.write('\x1b[H\x1b[2J' + C.render(state, {width: out.columns || 80, height: out.rows || 24}));
+  // A frame that can't be drawn says so on a plain line and drops the newest events (the likely cause), never piling up notes.
+  const out = process.stdout, draw = () => { try { out.write('\x1b[H\x1b[2J' + C.render(state, {width: out.columns || 80, height: out.rows || 24})); }
+    catch (e) { state.events = state.events.slice(1); out.write('\x1b[H\x1b[2JCould not draw a frame (' + C.clean(String(e.message)).slice(0, 80) + '); retrying.\n'); } };
   if (once) { console.log(C.render(state, {width: out.columns || 80, height: out.rows || 24})); return; }
   out.write('\x1b[?1049h\x1b[?25l'); // the alternate screen, no cursor
-  const leave = code => { out.write('\x1b[?25h\x1b[?1049l'); process.exit(code); };
-  process.on('SIGINT', () => leave(0)); out.on('resize', draw);
+  // The terminal comes back on every way out: Ctrl-C, /quit, SIGTERM, SIGHUP, a crash (review 11-28).
+  let restored = false; const restore = () => { if (!restored) { restored = true; out.write('\x1b[?25h\x1b[?1049l'); } };
+  const leave = code => { restore(); process.exit(code); };
+  process.on('SIGINT', () => leave(0)); process.on('SIGTERM', () => leave(143)); process.on('SIGHUP', () => leave(129)); // 128 + signal
+  process.on('uncaughtException', e => { restore(); console.error(e); process.exit(1); }); process.on('unhandledRejection', e => { restore(); console.error(e); process.exit(1); });
+  process.on('exit', restore); out.on('resize', draw);
   readline.emitKeypressEvents(process.stdin); process.stdin.setRawMode?.(true);
   process.stdin.on('keypress', async (ch, k) => {
     if (k?.ctrl && k.name === 'c') return leave(0);
