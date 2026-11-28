@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
-import {decodeTail, mergeEvents, presence, render, parseCommand, runCommand, placeOf, findPlace, PLACES, USDG, hhmm, clean} from '../lib/city.js';
+import {decodeTail, mergeEvents, presence, render, parseCommand, runCommand, placeOf, findPlace, PLACES, USDG, hhmm, clean, fullAddresses, lineOf} from '../lib/city.js';
 
 const BIN = new URL('../bin/jazzcat.mjs', import.meta.url).pathname;
 const T = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef', pad = a => '0x' + a.slice(2).toLowerCase().padStart(64, '0');
@@ -21,7 +21,7 @@ test('the tail: USDG paid to or spent by a Cat\'s own wallet; other transfers an
   const ev = decodeTail(tail);
   assert.equal(ev.length, 2);
   assert.deepEqual([ev[0].kind, ev[0].token, ev[0].amount, ev[0].time], ['pay-in', 1, 1.5, NOW - 60000]);
-  assert.match(ev[0].line, /JazzCat #1 was paid 1\.50 USDG by 0x7777…7777/);
+  assert.match(ev[0].line, /JazzCat #1 was paid 1\.50 USDG by 0x7{40}$/, 'the payer in full');
   assert.deepEqual([ev[1].kind, ev[1].amount], ['cat-spent', 0.25]); assert.match(ev[1].line, /spent 0\.25 USDG/);
   assert.deepEqual(decodeTail({}), []);
 });
@@ -136,4 +136,37 @@ test('review round 2: two spends in one tx stay two; a Cat-to-Cat payment shows 
   assert.equal(hhmm('2026-11-28T10:00:00Z'), '10:00'); assert.equal(hhmm(Date.UTC(2026, 10, 28, 9, 30)), '09:30'); assert.equal(hhmm('nope'), '--:--');
   assert.equal(presence([{token: 1, kind: 'pay-in', time: NOW + 3600e3}], NOW).size, 0, 'a future-dated event is not live');
   assert.equal(clean('a­b؜c\u{e0041}d️e'), 'abcde');
+});
+
+
+// Addresses in full (address poisoning, the City's rule): never 0x1479…806e in anything we print.
+const SHORTENED = /0x[0-9a-fA-F]{2,10}(?:…|\.\.\.)/, PARTIAL = /0x[0-9a-fA-F]{1,39}(?![0-9a-fA-F])/;
+test('addresses in full: the push\'s short forms become the event\'s own full address, or "a wallet"; the tail never shortens', () => {
+  const spent = {kind: 'cat-spent', token: 1, from: CAT1, to: '0x0409f370a3c1127cd99eb99aab912bdd00f4048b', line: 'JazzCat #1 spent 1 USDG → 0x0409…048b'};
+  assert.equal(lineOf(spent), 'JazzCat #1 spent 1 USDG → 0x0409f370a3c1127cd99eb99aab912bdd00f4048b');
+  const opened = {kind: 'cat-wallet', token: 1, wallet: CAT1, line: "JazzCat #1's own wallet is open on chain (0x1479…806e)"};
+  assert.equal(lineOf(opened), `JazzCat #1's own wallet is open on chain (${CAT1})`);
+  assert.equal(fullAddresses('paid 0xdead…beef and 0x1479...806e', {to: CAT1}), `paid a wallet and ${CAT1}`, 'no field fits: never guessed');
+  assert.equal(fullAddresses('to 0x1479…806e', {a: CAT1, b: CAT1.toUpperCase().replace('0X', '0x')}), `to ${CAT1}`, 'the same address twice is one');
+  for (const e of decodeTail(tail)) assert.doesNotMatch(e.line, SHORTENED);
+});
+test('addresses in full: a frame cuts before an address, never inside it, at any width', () => {
+  const ev = [{kind: 'cat-spent', token: 1, tx: '0x1', block: 2, time: NOW - 1000, to: '0x0409f370a3c1127cd99eb99aab912bdd00f4048b', line: 'JazzCat #1 spent 1 USDG → 0x0409…048b'},
+    {kind: 'pay-in', token: 1, tx: '0x' + 'ab'.repeat(32), block: 1, time: NOW - 2000, line: `JazzCat #1 was paid 2 USDG by ${OTHER} in 0x${'ab'.repeat(32)}`}];
+  for (const width of [60, 72, 80, 100, 140]) {
+    const f = render({events: ev, notes: [`wallet ${CAT1}`], input: ''}, {width, height: 26, now: NOW});
+    assert.doesNotMatch(f, SHORTENED, `width ${width}`); assert.doesNotMatch(f, PARTIAL, `width ${width}: a cut address`);
+    assert.ok(f.split('\n').every(l => [...l].length === width), `width ${width}`);
+  }
+  assert.match(render({events: ev, notes: [], input: ''}, {width: 140, height: 26, now: NOW}), /→ 0x0409f370a3c1127cd99eb99aab912bdd00f4048b/);
+  assert.equal(presence([{agent: OTHER, kind: 'network-pay', time: NOW}], NOW).size, 0, 'an agent with no name is not placed by an address prefix');
+  assert.deepEqual([...presence([{agent: OTHER, agentName: 'Bucks', kind: 'network-pay', time: NOW}], NOW).values()], [['Bucks']]);
+});
+test('addresses in full: line mode prints the push\'s short forms in full', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jc-city-')), file = path.join(dir, 'f.json');
+  fs.writeFileSync(file, JSON.stringify({economy: {asOfBlock: 1, events: [{kind: 'cat-wallet', token: 1, wallet: CAT1, tx: '0xe', block: 1, time: Date.now(), line: "JazzCat #1's own wallet is open on chain (0x1479…806e)"}]}, tail: {...tail, times: {100: Date.now() - 30000, 101: Date.now() - 20000}}}));
+  const r = spawnSync(process.execPath, [BIN, 'city', '--once', '--line'], {encoding: 'utf8', timeout: 20000, env: {...process.env, JAZZCAT_CITY_FIXTURE: file}});
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, new RegExp(`open on chain \\(${CAT1}\\)`)); assert.match(r.stdout, /paid 1\.50 USDG by 0x7{40}/);
+  assert.doesNotMatch(r.stdout, SHORTENED);
 });

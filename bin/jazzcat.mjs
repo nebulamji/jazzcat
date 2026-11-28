@@ -428,7 +428,7 @@ async function cityCmd(args) {
   const stamp = C.hhmm;
   if (lineMode) {
     const emit = () => { for (const e of [...state.events].reverse()) { if (printed.has(key(e))) continue; printed.add(key(e));
-      console.log(`${stamp(e.time)}  ${C.placeName(C.placeOf(e)).padEnd(14)}  ${C.clean(e.line || e.kind)}`); } };
+      console.log(`${stamp(e.time)}  ${C.placeName(C.placeOf(e)).padEnd(14)}  ${C.lineOf(e)}`); } };
     console.log(`New Jazz City · Robinhood Chain · block ${Number.isFinite(Number(state.head)) ? Number(state.head) : '…'} (read only; map: ${C.MAP_URL})`);
     for (const e of state.events.slice(12)) printed.add(key(e)); // the newest 12 to start
     emit(); if (once) return;
