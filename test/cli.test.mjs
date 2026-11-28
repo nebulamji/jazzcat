@@ -227,3 +227,59 @@ test('the holder bridge: jazzcat mcp holder sends the token as a bearer, and say
     assert.match(JSON.parse(n.stdout.trim()).error.message, /JAZZCAT_HOLDER_TOKEN is not set/);
   } finally { hs.server.close(); }
 });
+
+// The City's MCP is read-only by default; --actions (or yes to the question) opts in: ?actions=on over HTTP, and the
+// pinned bridge with --actions, which sends x-njc-actions: on. Without a terminal there is no question: read-only.
+test('--actions: HTTP entries get ?actions=on, bridge entries run mcp --actions; the default is read-only', () => {
+  const cwd = tmp(), home = tmp(), env = {HOME: home, CODEX_HOME: '', PATH: tmp()};
+  const r = run(['connect', 'cursor', '--no-skill', '--actions'], {cwd, env});
+  assert.equal(r.status, 0); assert.match(r.stderr, /Mode: your agent can prepare actions/);
+  assert.deepEqual(JSON.parse(readFileSync(join(cwd, '.cursor', 'mcp.json'), 'utf8')).mcpServers['new-jazz-city'], {url: CITY + '?actions=on'});
+  assert.equal(run(['connect', 'codex', '--no-skill', '--actions'], {env}).status, 0);
+  assert.match(readFileSync(join(home, '.codex', 'config.toml'), 'utf8'), new RegExp(`args = \\["-y", "${PKG.replace('.', '\\.')}", "mcp", "--actions"\\]`));
+  const plain = run(['connect', 'vscode', '--no-skill'], {cwd, env});
+  assert.match(plain.stderr, /Mode: read-only\. To let your agent prepare trades and job steps for you to sign: npx jazzcat --actions/);
+  assert.deepEqual(JSON.parse(readFileSync(join(cwd, '.vscode', 'mcp.json'), 'utf8')).servers['new-jazz-city'], {type: 'http', url: CITY}, 'no terminal, no flag: read-only');
+});
+
+test('--actions never replaces an existing read-only entry; it says how to switch', () => {
+  const cwd = tmp(), env = {HOME: tmp(), CODEX_HOME: '', PATH: tmp()};
+  assert.equal(run(['connect', 'cursor', '--no-skill'], {cwd, env}).status, 0);
+  const r = run(['connect', 'cursor', '--no-skill', '--actions'], {cwd, env});
+  assert.match(r.stderr, /left as is.*remove it and run npx jazzcat --actions/s);
+  assert.deepEqual(JSON.parse(readFileSync(join(cwd, '.cursor', 'mcp.json'), 'utf8')).mcpServers['new-jazz-city'], {url: CITY}, 'untouched');
+});
+
+test('the bridge sends x-njc-actions: on only with --actions', async () => {
+  const seen = [];
+  const srv = createServer((req, res) => { seen.push(req.headers['x-njc-actions'] ?? null); req.resume(); req.on('end', () => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({jsonrpc: '2.0', id: 1, result: {tools: []}})); }); });
+  await new Promise(r => srv.listen(0, '127.0.0.1', r));
+  const url = `http://127.0.0.1:${srv.address().port}/mcp`;
+  try {
+    for (const extra of [['--actions'], []]) {
+      // async spawn: spawnSync would block this process, and with it the server answering the bridge
+      const stdout = await new Promise((resolve, reject) => {
+        const c = spawn(process.execPath, [BIN, 'mcp', ...extra], {env: {...process.env, ...SAFE(), JAZZCAT_MCP_URL: url}});
+        let o = ''; c.stdout.on('data', d => { o += d; }); c.on('error', reject); c.on('close', () => resolve(o));
+        c.stdin.end(JSON.stringify({jsonrpc: '2.0', id: 1, method: 'tools/list', params: {}}) + '\n');
+      });
+      assert.equal(JSON.parse(stdout.trim().split('\n')[0]).id, 1, 'the answer passes through');
+    }
+    assert.deepEqual(seen, ['on', null]);
+  } finally { srv.close(); }
+});
+
+// The question itself needs a terminal: util-linux `script` gives the command a pseudo-terminal (skipped where it's missing).
+test('on a terminal: the actions question; y writes ?actions=on, a plain Enter stays read-only', {skip: spawnSync('script', ['--version']).status !== 0 && 'no util-linux script'}, async () => {
+  for (const [answer, url] of [['y', CITY + '?actions=on'], ['', CITY]]) {
+    const cwd = tmp(), cmd = `${JSON.stringify(process.execPath)} ${JSON.stringify(BIN)} connect cursor --no-skill`;
+    const out = await new Promise(resolve => {
+      const c = spawn('script', ['-qec', cmd, '/dev/null'], {cwd, env: {...process.env, ...SAFE(), PATH: '/usr/bin:/bin'}});
+      let o = ''; c.stdout.on('data', d => { o += d; });
+      setTimeout(() => c.stdin.write(answer + '\n'), 800); setTimeout(() => c.stdin.write('\n'), 1600); // then N to the holder question
+      c.on('close', () => resolve(o)); setTimeout(() => c.kill(), 15000);
+    });
+    assert.match(out, /Let your agent prepare trades, job steps and other actions for you to sign\?/);
+    assert.equal(JSON.parse(readFileSync(join(cwd, '.cursor', 'mcp.json'), 'utf8')).mcpServers['new-jazz-city'].url, url, `answer ${JSON.stringify(answer)}`);
+  }
+});
