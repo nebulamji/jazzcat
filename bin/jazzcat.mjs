@@ -408,29 +408,39 @@ async function recipesCmd(args) {
 // jazzcat city: New Jazz City in the terminal, read only (lib/city.js). A full screen on a terminal; feed lines otherwise.
 //   --once   one frame (or, without a terminal, the feed once) and exit
 //   --line   feed lines only, even on a terminal
+//   --explore  preview, off by default: /look <place> says what is at a place now (city_map + the live feed), /go cat N
+//              follows one Cat (/go off stops). Read only, like the rest.
+//   --go <N>   start following JazzCat #N (implies --explore); in line mode, print only that Cat's lines
 // JAZZCAT_CITY_FIXTURE=<file with {economy, tail}> reads that instead of the network (tests).
 async function cityCmd(args) {
   const C = await import('../lib/city.js'), {NewJazzCity} = await import('../lib/sdk.js');
   const once = args.includes('--once'), lineMode = args.includes('--line') || !process.stdout.isTTY;
+  const goAt = args.indexOf('--go'), goCat = goAt >= 0 ? Number(args[goAt + 1]) : null;
+  if (goAt >= 0 && !(Number.isInteger(goCat) && goCat >= 1 && goCat <= C.CATS)) { console.error(`usage: jazzcat city --go <JazzCat number, 1 to ${C.CATS}>`); process.exit(2); }
+  const explore = args.includes('--explore') || goAt >= 0;
   const fixture = process.env.JAZZCAT_CITY_FIXTURE ? JSON.parse(fs.readFileSync(process.env.JAZZCAT_CITY_FIXTURE, 'utf8')) : null;
   const get = async url => fixture ? (url.startsWith(C.ECONOMY_URL) ? fixture.economy : fixture.tail)
     : (await fetch(url, {headers: {'user-agent': 'jazzcat-city/1'}, signal: AbortSignal.timeout(20000)})).json();
   const city = new NewJazzCity({timeoutMs: 60_000});
   const econ = await get(C.ECONOMY_URL);
-  const state = {events: C.mergeEvents([], econ.events || []), head: econ.asOfBlock, notes: [], input: ''};
+  const state = {events: C.mergeEvents([], econ.events || []), head: econ.asOfBlock, notes: [], input: '', ...(explore ? {noteRoom: 6} : {})};
   let from = Number(econ.asOfBlock || 0), printed = new Set();
   const key = C.eventId; // the same identity mergeEvents keeps: two calls or two spends in one tx print twice
   const pull = async () => {
     try { const t = await get(`${C.TAIL_URL}?from=${from}`); state.head = t.head || state.head; from = Math.max(from, Number(t.to || from));
-      state.events = C.mergeEvents(state.events, C.decodeTail(t)); } catch {}
+      state.events = C.mergeEvents(state.events, C.decodeTail(t));
+      if (explore && !lineMode) state.notes = [...state.notes, ...C.followStep(state)].slice(-6); } catch {}
   };
   await pull();
+  if (goCat) state.notes.push(...await C.runCommand({cmd: 'go-cat', cat: goCat}, {city, state, explore}));
+  const mine = e => !state.follow || e.token === state.follow.cat; // line mode: only the followed Cat's lines
   const stamp = C.hhmm;
   if (lineMode) {
-    const emit = () => { for (const e of [...state.events].reverse()) { if (printed.has(key(e))) continue; printed.add(key(e));
+    const emit = () => { for (const e of [...state.events].reverse()) { if (!mine(e) || printed.has(key(e))) continue; printed.add(key(e));
       console.log(`${stamp(e.time)}  ${C.placeName(C.placeOf(e)).padEnd(14)}  ${C.lineOf(e)}`); } };
     console.log(`New Jazz City · Robinhood Chain · block ${Number.isFinite(Number(state.head)) ? Number(state.head) : '…'} (read only; map: ${C.MAP_URL})`);
-    for (const e of state.events.slice(12)) printed.add(key(e)); // the newest 12 to start
+    for (const n of state.notes) console.log(`» ${C.clean(n)}`);
+    for (const e of state.events.filter(mine).slice(12)) printed.add(key(e)); // the newest 12 to start (of the followed Cat's, with --go)
     emit(); if (once) return;
     setInterval(async () => { await pull(); emit(); }, 5000);
     return;
@@ -452,7 +462,7 @@ async function cityCmd(args) {
     if (k?.name === 'return') {
       const c = C.parseCommand(state.input); state.input = '';
       if (c?.cmd === 'quit') return leave(0);
-      try { state.notes.push(...await C.runCommand(c, {city, state})); } catch (e) { state.notes.push('Could not: ' + String(e.message || e).slice(0, 120)); }
+      try { state.notes.push(...await C.runCommand(c, {city, state, explore})); } catch (e) { state.notes.push('Could not: ' + String(e.message || e).slice(0, 120)); }
       state.notes = state.notes.slice(-6);
     } else if (k?.name === 'backspace') state.input = state.input.slice(0, -1);
     else if (ch && !k?.ctrl && !k?.meta && ch.length === 1 && ch >= ' ') state.input += ch;
