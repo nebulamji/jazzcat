@@ -323,3 +323,26 @@ test('the bridge times out a hung call and flushes every answer before it exits'
     assert.deepEqual(lines.find(l => l.id === 2)?.result, {ok: 2}, 'the next call still runs and its answer is flushed');
   } finally { srv.close(); }
 });
+
+// tg-4d deep review §11: the bridge served one request at a time, so a slow call held every call behind it. Calls now run
+// side by side (answers carry their ids); initialize runs alone, so the session id it sets rides on the calls after it.
+test('the bridge runs calls side by side, and initialize first, so its session id reaches the next call', async () => {
+  const seen = [];
+  const srv = createServer((req, res) => { let b = ''; req.on('data', d => { b += d; }); req.on('end', () => { const m = JSON.parse(b);
+    seen.push({method: m.method, session: req.headers['mcp-session-id'] || null});
+    const answer = () => { res.setHeader('content-type', 'application/json'); if (m.method === 'initialize') res.setHeader('mcp-session-id', 'sess-1');
+      res.end(JSON.stringify({jsonrpc: '2.0', id: m.id, result: {ok: m.id}})); };
+    setTimeout(answer, m.method === 'initialize' ? 200 : m.method === 'slow' ? 900 : 10); }); });
+  await new Promise(r => srv.listen(0, '127.0.0.1', r));
+  try {
+    const out = await new Promise(resolve => {
+      const c = spawn(process.execPath, [BIN, 'mcp'], {env: {...process.env, ...SAFE(), JAZZCAT_MCP_URL: `http://127.0.0.1:${srv.address().port}/mcp`}});
+      let o = ''; c.stdout.on('data', d => { o += d; }); c.on('close', () => resolve(o));
+      c.stdin.end([{jsonrpc: '2.0', id: 1, method: 'initialize'}, {jsonrpc: '2.0', id: 2, method: 'slow'}, {jsonrpc: '2.0', id: 3, method: 'tools/list'}].map(m => JSON.stringify(m)).join('\n') + '\n');
+    });
+    const ids = out.trim().split('\n').map(l => JSON.parse(l).id);
+    assert.deepEqual(ids.sort(), [1, 2, 3], 'every call answered');
+    assert.deepEqual(out.trim().split('\n').map(l => JSON.parse(l).id), [1, 3, 2], 'the fast call is not held behind the slow one');
+    assert.deepEqual(seen.filter(s => s.method !== 'initialize').map(s => s.session), ['sess-1', 'sess-1'], 'calls after initialize carry its session id');
+  } finally { srv.close(); }
+});
