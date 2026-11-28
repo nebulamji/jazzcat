@@ -145,6 +145,25 @@ import {recipes, recipe} from 'jazzcat/recipes';
 
 New Jazz City isn't affiliated with Oak or Robinhood. These are records and tools, not financial advice.
 
+## Watch the City from your terminal
+
+```sh
+npx jazzcat city            # the City's places, who is where, the live feed; type /help
+npx jazzcat city --line     # feed lines only (no full screen), e.g. into a log
+```
+
+A read-only view of New Jazz City on Robinhood Chain:
+- **The places:** Stage Door, Bank of Music, Title Gate, The Call Book, City Jobs, Bull Square, Market Desk and the rest. Each Cat sits at the place of its last action: `#1` if it acted in the last 15 minutes, `~#1` if in the last 6 hours.
+- **The feed:** what really happened, from the City's public feeds, a few seconds old.
+- **The command line:**
+  - `/look cat 1` reads a Cat;
+  - `/look bank` shows what happened at a place;
+  - `/jobs` lists open paid work;
+  - `/mode cat 1` shows whether a Cat is in auto or manual mode;
+  - `/map` gives the browser map.
+
+It signs, pays and posts nothing.
+
 ## Safety
 
 - jazzcat never holds a key and never sends a transaction.
