@@ -226,12 +226,15 @@ async function tokenWorks(token) {
 // A file that holds the token is readable by its owner only (an existing file keeps its mode on write, so set it).
 const private_ = f => { try { fs.chmodSync(f, 0o600); } catch {} };
 const HOLDER_BRIDGE = t => ({command: 'npx', args: ['-y', PKG, 'mcp', 'holder'], env: {JAZZCAT_HOLDER_TOKEN: t}});
-function holderJson(file, key, entry) {
+function holderJson(file, key, entry, {atomic = false} = {}) {
   let cur = {};
   if (fs.existsSync(file)) { try { cur = JSON.parse(fs.readFileSync(file, 'utf8') || '{}'); } catch { return {status: 'failed', where: file, note: 'not valid JSON, left alone'}; } }
   const had = !!cur?.[key]?.[HOLDER_NAME];
   fs.mkdirSync(path.dirname(file), {recursive: true});
-  fs.writeFileSync(file, JSON.stringify({...cur, [key]: {...(cur[key] || {}), [HOLDER_NAME]: entry}}, null, 2) + '\n', {mode: 0o600});
+  const text = JSON.stringify({...cur, [key]: {...(cur[key] || {}), [HOLDER_NAME]: entry}}, null, 2) + '\n';
+  // atomic: a file another program rewrites often (Claude Code's ~/.claude.json) is replaced whole, never left half-written.
+  if (atomic) { const tmp = `${file}.jazzcat-${process.pid}.tmp`; fs.writeFileSync(tmp, text, {mode: 0o600}); fs.renameSync(tmp, file); }
+  else fs.writeFileSync(file, text, {mode: 0o600});
   private_(file);
   return {status: had ? 'replaced' : 'added', where: file, note: had ? `replaced your earlier "${HOLDER_NAME}" entry` : null};
 }
@@ -239,11 +242,11 @@ function holderEntry(client, token) {
   const header = {Authorization: `Bearer ${token}`};
   switch (client) {
     case 'claude': {
+      // tg-4d deep review §11: the token never goes on argv (`claude mcp add --header` put it in every process list).
+      // Claude Code keeps user-scope servers in ~/.claude.json ($CLAUDE_CONFIG_DIR if set): the entry is written there.
       if (!which('claude')) return {status: 'failed', where: 'Claude Code', note: 'no claude CLI on PATH'};
-      const had = spawnQuiet('claude', ['mcp', 'get', HOLDER_NAME]) === 0;
-      if (had) spawnQuiet('claude', ['mcp', 'remove', '--scope', 'user', HOLDER_NAME]);
-      return spawnQuiet('claude', ['mcp', 'add', '--transport', 'http', '--scope', 'user', HOLDER_NAME, URL_HOLDER, '--header', `Authorization: Bearer ${token}`]) === 0
-        ? {status: had ? 'replaced' : 'added', where: 'Claude Code, user scope', note: had ? `replaced your earlier "${HOLDER_NAME}" entry` : null} : {status: 'failed', where: 'Claude Code', note: 'claude mcp add failed'};
+      const r = holderJson(path.join(process.env.CLAUDE_CONFIG_DIR || HOME(), '.claude.json'), 'mcpServers', {type: 'http', url: URL_HOLDER, headers: header}, {atomic: true});
+      return r.status === 'failed' ? {...r, where: 'Claude Code (' + r.where + ')'} : {...r, where: 'Claude Code, user scope (' + r.where + ')'};
     }
     case 'codex': {
       const file = path.join(codexHome(), 'config.toml'), cur = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
