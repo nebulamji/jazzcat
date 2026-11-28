@@ -50,6 +50,7 @@ An entry that is already there is never overwritten: a different one is left as 
   npx jazzcat skill [claude|codex|agents]   only the skill (jazzcats/SKILL.md)
   npx jazzcat mcp                the bridge the configs run (stdio)
   npx jazzcat url                print the MCP address
+  npx jazzcat city               New Jazz City in your terminal, read only: the places, who is where, the live feed, /look /jobs /mode
 
 Prove a piece you made on Texel:
   npx jazzcat proof <file>                             find it in the public register
@@ -377,6 +378,56 @@ async function recipesCmd(args) {
   say(`\n${all.length} recipes for Robinhood Chain. Print one: jazzcat recipes <name>. For Oak: jazzcat recipes --out <dir>, then oak recipes add <dir>.`);
 }
 
+// jazzcat city: New Jazz City in the terminal, read only (lib/city.js). A full screen on a terminal; feed lines otherwise.
+//   --once   one frame (or, without a terminal, the feed once) and exit
+//   --line   feed lines only, even on a terminal
+// JAZZCAT_CITY_FIXTURE=<file with {economy, tail}> reads that instead of the network (tests).
+async function cityCmd(args) {
+  const C = await import('../lib/city.js'), {NewJazzCity} = await import('../lib/sdk.js');
+  const once = args.includes('--once'), lineMode = args.includes('--line') || !process.stdout.isTTY;
+  const fixture = process.env.JAZZCAT_CITY_FIXTURE ? JSON.parse(fs.readFileSync(process.env.JAZZCAT_CITY_FIXTURE, 'utf8')) : null;
+  const get = async url => fixture ? (url.startsWith(C.ECONOMY_URL) ? fixture.economy : fixture.tail)
+    : (await fetch(url, {headers: {'user-agent': 'jazzcat-city/1'}, signal: AbortSignal.timeout(20000)})).json();
+  const city = new NewJazzCity({timeoutMs: 60_000});
+  const econ = await get(C.ECONOMY_URL);
+  const state = {events: C.mergeEvents([], econ.events || []), head: econ.asOfBlock, notes: [], input: ''};
+  let from = Number(econ.asOfBlock || 0), printed = new Set();
+  const key = e => `${e.tx}|${e.kind}|${e.token ?? ''}`;
+  const pull = async () => {
+    try { const t = await get(`${C.TAIL_URL}?from=${from}`); state.head = t.head || state.head; from = Math.max(from, Number(t.to || from));
+      state.events = C.mergeEvents(state.events, C.decodeTail(t)); } catch {}
+  };
+  await pull();
+  const stamp = t => t ? new Date(t).toISOString().slice(11, 16) : '--:--';
+  if (lineMode) {
+    const emit = () => { for (const e of [...state.events].reverse()) { if (printed.has(key(e))) continue; printed.add(key(e));
+      console.log(`${stamp(e.time)}  ${C.placeName(C.placeOf(e)).padEnd(14)}  ${e.line || e.kind}`); } };
+    console.log(`New Jazz City · Robinhood Chain · block ${state.head ?? '…'} (read only; map: ${C.MAP_URL})`);
+    for (const e of state.events.slice(12)) printed.add(key(e)); // the newest 12 to start
+    emit(); if (once) return;
+    setInterval(async () => { await pull(); emit(); }, 5000);
+    return;
+  }
+  const out = process.stdout, draw = () => out.write('\x1b[H\x1b[2J' + C.render(state, {width: out.columns || 80, height: out.rows || 24}));
+  if (once) { console.log(C.render(state, {width: out.columns || 80, height: out.rows || 24})); return; }
+  out.write('\x1b[?1049h\x1b[?25l'); // the alternate screen, no cursor
+  const leave = code => { out.write('\x1b[?25h\x1b[?1049l'); process.exit(code); };
+  process.on('SIGINT', () => leave(0)); out.on('resize', draw);
+  readline.emitKeypressEvents(process.stdin); process.stdin.setRawMode?.(true);
+  process.stdin.on('keypress', async (ch, k) => {
+    if (k?.ctrl && k.name === 'c') return leave(0);
+    if (k?.name === 'return') {
+      const c = C.parseCommand(state.input); state.input = '';
+      if (c?.cmd === 'quit') return leave(0);
+      try { state.notes.push(...await C.runCommand(c, {city, state})); } catch (e) { state.notes.push('Could not: ' + String(e.message || e).slice(0, 120)); }
+      state.notes = state.notes.slice(-6);
+    } else if (k?.name === 'backspace') state.input = state.input.slice(0, -1);
+    else if (ch && !k?.ctrl && !k?.meta && ch.length === 1 && ch >= ' ') state.input += ch;
+    draw();
+  });
+  draw(); setInterval(async () => { await pull(); draw(); }, 5000);
+}
+
 const [cmd, ...rest] = process.argv.slice(2);
 const arg = rest[0];
 if (!cmd || cmd === 'connect' || ['--dry-run', '--no-skill', '--holder-token-stdin', '--holder'].includes(cmd)) await connect(cmd === 'connect' ? rest : process.argv.slice(2));
@@ -385,5 +436,6 @@ else if (cmd === 'url') console.log(URL_MCP);
 else if (cmd === 'proof') await proof(rest);
 else if (cmd === 'recipes') await recipesCmd(rest);
 else if (cmd === 'skill') await skill(rest);
+else if (cmd === 'city') await cityCmd(rest);
 else if (cmd === 'help' || cmd === '--help' || cmd === '-h') help();
 else { help(); process.exit(1); }
