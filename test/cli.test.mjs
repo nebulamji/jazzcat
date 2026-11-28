@@ -283,3 +283,43 @@ test('on a terminal: the actions question; y writes ?actions=on, a plain Enter s
     assert.equal(JSON.parse(readFileSync(join(cwd, '.cursor', 'mcp.json'), 'utf8')).mcpServers['new-jazz-city'].url, url, `answer ${JSON.stringify(answer)}`);
   }
 });
+
+// tg-4d deep review §11 (jazzcat connect): re-signing in drops only the earlier jazzcats block; a following table whose
+// header carries a comment, and [[array]] tables, are the user's own and are never deleted.
+test('Codex re-sign-in keeps commented tables and [[array]] tables after the old jazzcats block', async () => {
+  const hs = await holderServer(), home = holderHome(), env = {...hs.env, HOME: home, PATH: tmp()};
+  const {writeFileSync: wf, mkdirSync: md} = await import('node:fs');
+  md(join(home, '.codex'), {recursive: true});
+  const mine = '[mcp_servers.jazzcats]\ncommand = "old"\n\n[mcp_servers.jazzcats.env]\nX = "1"\n\n[profiles.work] # my work profile\nmodel = "o3"\n\n[[hooks]]\nname = "pre"\n\n[[hooks]]\nname = "post"\n';
+  wf(join(home, '.codex', 'config.toml'), mine);
+  try {
+    const r = await spawnIn(['connect', 'codex', '--no-skill', '--holder-token-stdin'], env, GOOD + '\n');
+    assert.equal(r.status, 0, r.stderr);
+    const toml = readFileSync(join(home, '.codex', 'config.toml'), 'utf8');
+    assert.ok(toml.includes('[profiles.work] # my work profile\nmodel = "o3"'), 'the commented table is kept: ' + toml);
+    assert.equal(toml.split('[[hooks]]').length, 3, 'both [[hooks]] tables are kept');
+    assert.ok(toml.includes('name = "pre"') && toml.includes('name = "post"'));
+    assert.ok(!toml.includes('command = "old"') && !toml.includes('X = "1"'), 'the old jazzcats block and its sub-table are gone');
+    assert.equal(toml.split('[mcp_servers.jazzcats]').length, 2, 'exactly one jazzcats entry');
+  } finally { hs.server.close(); }
+});
+
+// tg-4d deep review §11 (bridge): a call the City never answers times out with a JSON-RPC error instead of hanging the
+// bridge, and the answers already written reach the client before the bridge exits.
+test('the bridge times out a hung call and flushes every answer before it exits', async () => {
+  const srv = createServer((req, res) => { let b = ''; req.on('data', d => { b += d; }); req.on('end', () => { const m = JSON.parse(b);
+    if (m.method === 'hang') return; // never answers
+    res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({jsonrpc: '2.0', id: m.id, result: {ok: m.id}})); }); });
+  await new Promise(r => srv.listen(0, '127.0.0.1', r));
+  try {
+    const out = await new Promise(resolve => {
+      const c = spawn(process.execPath, [BIN, 'mcp'], {env: {...process.env, ...SAFE(), JAZZCAT_MCP_URL: `http://127.0.0.1:${srv.address().port}/mcp`, JAZZCAT_BRIDGE_TIMEOUT_MS: '500'}});
+      let o = ''; c.stdout.on('data', d => { o += d; }); c.on('close', () => resolve(o));
+      c.stdin.end([{jsonrpc: '2.0', id: 1, method: 'hang'}, {jsonrpc: '2.0', id: 2, method: 'tools/list'}].map(m => JSON.stringify(m)).join('\n') + '\n');
+    });
+    const lines = out.trim().split('\n').map(l => JSON.parse(l));
+    assert.equal(lines.find(l => l.id === 1)?.error?.code, -32000, 'the hung call answers with an error');
+    assert.match(lines.find(l => l.id === 1).error.message, /did not answer within/);
+    assert.deepEqual(lines.find(l => l.id === 2)?.result, {ok: 2}, 'the next call still runs and its answer is flushed');
+  } finally { srv.close(); }
+});

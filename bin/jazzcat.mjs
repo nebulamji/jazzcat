@@ -249,7 +249,11 @@ function holderEntry(client, token) {
       const file = path.join(codexHome(), 'config.toml'), cur = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
       // Drop an earlier [mcp_servers.jazzcats] block (and its sub-tables), then add ours: the stdio bridge with the token in env.
       const out = [], lines = cur.split('\n'); let skip = false, had = false;
-      for (const l of lines) { const h = /^\s*\[([^\]]+)\]\s*$/.exec(l); if (h) { skip = h[1] === `mcp_servers.${HOLDER_NAME}` || h[1].startsWith(`mcp_servers.${HOLDER_NAME}.`); if (skip) had = true; } if (!skip) out.push(l); }
+      // tg-4d deep review §11: every TOML header counts, including one with a trailing comment, an [[array]] table and a
+      // quoted key, so skipping the old block always stops at the next table and never deletes the user's own.
+      for (const l of lines) { const h = /^\s*\[\[?\s*([^\]]+?)\s*\]\]?\s*(?:#.*)?$/.exec(l);
+        if (h) { const name = h[1].replace(/["']/g, '').replace(/\s*\.\s*/g, '.'); skip = name === `mcp_servers.${HOLDER_NAME}` || name.startsWith(`mcp_servers.${HOLDER_NAME}.`); if (skip) had = true; }
+        if (!skip) out.push(l); }
       const block = `\n[mcp_servers.${HOLDER_NAME}]\ncommand = "npx"\nargs = ["-y", "${PKG}", "mcp", "holder"]\nenv = { JAZZCAT_HOLDER_TOKEN = "${token}" }\n`;
       fs.mkdirSync(path.dirname(file), {recursive: true}); fs.writeFileSync(file, out.join('\n').replace(/\n+$/, '\n') + block, {mode: 0o600}); private_(file);
       return {status: had ? 'replaced' : 'added', where: file, note: had ? `replaced your earlier "${HOLDER_NAME}" entry` : null};
@@ -323,6 +327,7 @@ async function connect(args) {
 }
 
 // stdio <-> Streamable HTTP bridge. Each JSON-RPC line on stdin is POSTed to the MCP; replies (JSON or SSE) go to stdout.
+const BRIDGE_TIMEOUT_MS = Number(process.env.JAZZCAT_BRIDGE_TIMEOUT_MS) || 60000;
 async function bridge(target, actions = false) {
   const holder = target === 'holder', url = holder ? URL_HOLDER : URL_MCP, token = holder ? process.env.JAZZCAT_HOLDER_TOKEN || '' : '';
   let session = null;
@@ -337,7 +342,7 @@ async function bridge(target, actions = false) {
       if (session) headers['mcp-session-id'] = session;
       if (!holder && actions) headers['x-njc-actions'] = 'on';
       if (holder) { if (!TOKEN_RE.test(token)) return fail(msg.id, 'JAZZCAT_HOLDER_TOKEN is not set to a jc_ token: run npx jazzcat and sign in with your Cat.'); headers.authorization = `Bearer ${token}`; }
-      const r = await fetch(url, {method: 'POST', headers, body: JSON.stringify(msg)});
+      const r = await fetch(url, {method: 'POST', headers, body: JSON.stringify(msg), signal: AbortSignal.timeout(BRIDGE_TIMEOUT_MS)}); // one hung call never blocks the rest
       const sid = r.headers.get('mcp-session-id'); if (sid) session = sid;
       if (r.status === 202 || r.status === 204) return;
       const type = r.headers.get('content-type') || '';
@@ -351,12 +356,13 @@ async function bridge(target, actions = false) {
       } else if (text) {
         const j = JSON.parse(text); (Array.isArray(j) ? j : [j]).forEach(out);
       }
-    } catch (e) { fail(msg.id, `Couldn't reach New Jazz City: ${e.message}`); }
+    } catch (e) { fail(msg.id, e?.name === 'TimeoutError' ? `New Jazz City did not answer within ${BRIDGE_TIMEOUT_MS / 1000} s; try again.` : `Couldn't reach New Jazz City: ${e.message}`); }
   }
   async function pump() { if (busy) return; busy = true; while (queue.length) await send(queue.shift()); busy = false; }
   const rl = readline.createInterface({input: process.stdin});
   rl.on('line', l => { if (l.trim()) { queue.push(l); pump(); } });
-  rl.on('close', async () => { while (busy || queue.length) await new Promise(r => setTimeout(r, 50)); process.exit(0); });
+  // Exit only after the last answer is flushed to the client (a pipe write is asynchronous).
+  rl.on('close', async () => { while (busy || queue.length) await new Promise(r => setTimeout(r, 50)); process.stdout.write('', () => process.exit(0)); });
 }
 
 // jazzcat proof: prints the proof as JSON; exits 0 when it holds, 1 when it doesn't, 2 on a usage mistake.
