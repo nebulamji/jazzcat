@@ -419,7 +419,7 @@ async function cityCmd(args) {
   const econ = await get(C.ECONOMY_URL);
   const state = {events: C.mergeEvents([], econ.events || []), head: econ.asOfBlock, notes: [], input: ''};
   let from = Number(econ.asOfBlock || 0), printed = new Set();
-  const key = e => `${e.tx}|${e.kind}|${e.token ?? ''}|${e.src || ''}`;
+  const key = C.eventId; // the same identity mergeEvents keeps: two calls or two spends in one tx print twice
   const pull = async () => {
     try { const t = await get(`${C.TAIL_URL}?from=${from}`); state.head = t.head || state.head; from = Math.max(from, Number(t.to || from));
       state.events = C.mergeEvents(state.events, C.decodeTail(t)); } catch {}
